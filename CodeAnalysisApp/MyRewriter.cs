@@ -44,13 +44,13 @@ namespace CodeAnalysisApp
             {
                 if (expectedConfigureAwaitArgument != true)
                 {
-                    return InvocationExpression(
-                        MemberAccessExpression(
-                            SyntaxKind.SimpleMemberAccessExpression,
-                            node.Expression,
-                            IdentifierName("ConfigureAwait")),
-                        ArgumentListWithOneBoolArgument(false))
-                        .WithTriviaFrom(node);
+                    return node.Update(VisitToken(node.AwaitKeyword),
+                                       InvocationExpression(
+                                           MemberAccessExpression(
+                                               SyntaxKind.SimpleMemberAccessExpression,
+                                               node.Expression,
+                                               IdentifierName("ConfigureAwait")),
+                                           ArgumentListWithOneBoolArgument(false)));
                 }
             }
 
@@ -62,7 +62,7 @@ namespace CodeAnalysisApp
 
         private static ArgumentListSyntax ArgumentListWithOneBoolArgument(bool arg) =>
             ArgumentList()
-                .AddArguments(
+               .AddArguments(
                     Argument(
                         LiteralExpression(arg ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression)));
 

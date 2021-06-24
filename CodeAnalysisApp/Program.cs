@@ -18,6 +18,8 @@ namespace CodeAnalysisApp
     {
         static async Task Main(string[] args)
         {
+            Console.WriteLine(typeof(Task).FullName);
+
             RegisterVSMSBuild();
 
             using (var workspace = MSBuildWorkspace.Create())
@@ -33,6 +35,21 @@ namespace CodeAnalysisApp
                 Console.WriteLine($"Finished loading solution '{solutionPath}'");
 
                 await new MyFirstAnalyzer().Analyze(solution);
+
+                foreach (var project in solution.Projects)
+                {
+                    foreach (var document in project.Documents)
+                    {
+                        var root = await document.GetSyntaxRootAsync();
+                        var model = await document.GetSemanticModelAsync();
+                        var newSource = new MyRewriter(model).Visit(root);
+                        
+                        if (newSource != await document.GetSyntaxRootAsync())
+                        {
+                            File.WriteAllText(document.FilePath+".fix", newSource.ToFullString());
+                        }
+                    }
+                }
             }
         }
 
@@ -76,6 +93,7 @@ namespace CodeAnalysisApp
                 {
                     return visualStudioInstances[instanceNumber - 1];
                 }
+
                 Console.WriteLine("Input not accepted, try again.");
             }
         }
@@ -90,7 +108,8 @@ namespace CodeAnalysisApp
                     projectDisplay += $" ({loadProgress.TargetFramework})";
                 }
 
-                Console.WriteLine($"{loadProgress.Operation,-15} {loadProgress.ElapsedTime,-15:m\\:ss\\.fffffff} {projectDisplay}");
+                Console.WriteLine(
+                    $"{loadProgress.Operation,-15} {loadProgress.ElapsedTime,-15:m\\:ss\\.fffffff} {projectDisplay}");
             }
         }
     }

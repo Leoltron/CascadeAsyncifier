@@ -14,7 +14,7 @@ namespace CodeAnalysisApp
         private SemanticModel model;
         private INamedTypeSymbol attributeSymbol;
         private const string ATTR_NAME = "TestConsoleApplication.ExpectConfigureAwaitTrueAttribute";
-        private int errorsTotal = 0;
+        private int errorsTotal;
         private readonly Dictionary<string, List<(LinePosition, bool, string)>> dictionary = new();
 
         public async Task Analyze(Solution solution)
@@ -53,30 +53,7 @@ namespace CodeAnalysisApp
 
             model = await document.GetSemanticModelAsync();
             attributeSymbol = model.Compilation.GetTypeByMetadataName(ATTR_NAME);
-/*
-            if (attributeSymbol == null)
-            {
-                Console.WriteLine(
-                    $"Did not find {ATTR_NAME} in assembly, proceeding assuming we want .ConfigureAwait(false) everywhere");
-            }*/
-/*
-            var descendantNodes = root.DescendantNodes().ToList();
-
-            descendantNodes.OfType<ClassDeclarationSyntax>()
-                .Cast<MemberDeclarationSyntax>()
-                .Concat(descendantNodes.OfType<MethodDeclarationSyntax>())
-                .ForEach(Analyze);*/
             Analyze(document.Name, root, false);
-        }
-
-        public void Analyze(MemberDeclarationSyntax node)
-        {
-            var expectConfAwaitTrue = attributeSymbol != null &&
-                                      node.AttributeLists.SelectMany(a => a.Attributes)
-                                          .Select(a => ModelExtensions.GetTypeInfo(model, a).Type)
-                                          .Any(a => SymbolEqualityComparer.Default.Equals(attributeSymbol, a));
-            //Console.WriteLine($"{expectConfAwaitTrue.ToString().ToUpper()} {node}");
-            AnalyzeDescendants(node, expectConfAwaitTrue);
         }
 
         public void Analyze(string docName, SyntaxNode syntaxNode, bool expectedConfigureAwaitArgument)
@@ -89,11 +66,10 @@ namespace CodeAnalysisApp
                         Analyze(docName, awaitNode, expectedConfigureAwaitArgument);
 
                         break;
-                    case ClassDeclarationSyntax _:
-                    case MethodDeclarationSyntax _:
+                    case ClassDeclarationSyntax:
+                    case MethodDeclarationSyntax:
                     {
                         var node = childNode as MemberDeclarationSyntax;
-                        //Console.WriteLine(childNode.ToString());
                         var expectConfAwaitTrue =
                             expectedConfigureAwaitArgument || node.HasAttribute(model, attributeSymbol);
                         Analyze(docName, node, expectConfAwaitTrue);
@@ -112,26 +88,10 @@ namespace CodeAnalysisApp
 
         public void Analyze(string docName, AwaitExpressionSyntax awaitNode, bool expectedConfigureAwaitArgument)
         {
-            var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, awaitNode.Expression);
-            var actualArg = true;
-            if (expressionTypeInfo.Type.ToDisplayString() != "System.Threading.Tasks.Task")
-                foreach (var descNode in awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
-                {
-                    var a = ModelExtensions.GetSymbolInfo(model, descNode.Expression);
-
-                    if (a.Symbol?.ToDisplayString() != "System.Threading.Tasks.Task.ConfigureAwait(bool)")
-                        continue;
-
-                    if (descNode.ArgumentList.Arguments.First().Expression.Kind() != SyntaxKind.FalseLiteralExpression)
-                        continue;
-
-                    actualArg = false;
-
-                    break;
-                }
+            var actualArg = DetermineConfigureAwaitArgument(awaitNode);
 
             var span = awaitNode.SyntaxTree.GetLineSpan(awaitNode.Span);
-            if (actualArg != expectedConfigureAwaitArgument)
+            if (actualArg.HasValue && actualArg != expectedConfigureAwaitArgument)
             {
                 dictionary.AddOrCreate(docName)
                     .Add(
@@ -141,33 +101,24 @@ namespace CodeAnalysisApp
             }
         }
 
-        public void AnalyzeDescendants(SyntaxNode syntaxNode, bool expectedConfigureAwaitArgument)
+        private bool? DetermineConfigureAwaitArgument(AwaitExpressionSyntax awaitNode)
         {
-            foreach (var awaitNode in syntaxNode.DescendantNodes().OfType<AwaitExpressionSyntax>())
-            {
-                var descNodes = awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
-                foreach (var descNode in descNodes)
-                {
-                    var a = ModelExtensions.GetSymbolInfo(model, descNode.Expression);
-                    var name = a.Symbol.Name;
-                    if (a.Symbol.ToDisplayString() == "System.Threading.Tasks.Task.ConfigureAwait(bool)")
-                    {
-                        var confAwaitTrue = descNode.ArgumentList.Arguments.First().Expression.Kind() ==
-                                            SyntaxKind.TrueLiteralExpression;
-                        var span = descNode.SyntaxTree.GetLineSpan(descNode.Span);
-                        if (confAwaitTrue != expectedConfigureAwaitArgument)
-                        {
-                            Console.WriteLine(span.StartLinePosition + " " + descNode.ToFullString());
-                        }
-                        else
-                        {
-                            Console.WriteLine(span.StartLinePosition + " OK " + descNode.ToFullString());
-                        }
+            var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, awaitNode.Expression);
 
-                        break;
-                    }
-                }
+            if (expressionTypeInfo.Type.ToDisplayString() == typeof(Task).FullName)
+                return true;
+            
+            foreach (var descNode in awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                var a = ModelExtensions.GetSymbolInfo(model, descNode.Expression);
+
+                if (a.Symbol?.ToDisplayString() != "System.Threading.Tasks.Task.ConfigureAwait(bool)")
+                    continue;
+
+                return descNode.ArgumentList.Arguments.First().Expression.Kind() == SyntaxKind.TrueLiteralExpression;
             }
+            
+            return null;
         }
     }
 }

@@ -105,7 +105,7 @@ namespace CodeAnalysisApp
         {
             var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, awaitNode.Expression);
 
-            if (expressionTypeInfo.Type.ToDisplayString() == typeof(Task).FullName)
+            if (expressionTypeInfo.Type.ToDisplayString().StartsWith(typeof(Task).FullName!))
                 return true;
             
             foreach (var descNode in awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>())

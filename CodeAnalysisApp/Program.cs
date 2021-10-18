@@ -1,55 +1,74 @@
 ﻿using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
-using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Rewriters;
 
 namespace CodeAnalysisApp
 {
     class Program
     {
+        private static readonly IList<(Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)> rewriterFactories =
+            new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
+            {
+                (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
+                (_ => new AsyncVoidRewriter(), "async void"),
+            };
+
         static async Task Main(string[] args)
         {
             Console.WriteLine(typeof(Task).FullName);
 
             RegisterVSMSBuild();
 
-            using (var workspace = MSBuildWorkspace.Create())
+            using var workspace = MSBuildWorkspace.Create();
+
+            // Print message for WorkspaceFailed event to help diagnosing project load failures.
+            workspace.WorkspaceFailed += (o, e) => Console.WriteLine(e.Diagnostic.Message);
+
+            var solutionPath = args[0];
+            Console.WriteLine($"Loading solution '{solutionPath}'");
+
+            // Attach progress reporter so we print projects as they are loaded.
+            var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
+            Console.WriteLine($"Finished loading solution '{solutionPath}'");
+
+            //await new MyFirstAnalyzer().Analyze(solution);
+
+            var time = new TimeSpan[rewriterFactories.Count];
+
+            foreach (var project in solution.Projects)
             {
-                // Print message for WorkspaceFailed event to help diagnosing project load failures.
-                workspace.WorkspaceFailed += (o, e) => Console.WriteLine(e.Diagnostic.Message);
-
-                var solutionPath = args[0];
-                Console.WriteLine($"Loading solution '{solutionPath}'");
-
-                // Attach progress reporter so we print projects as they are loaded.
-                var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
-                Console.WriteLine($"Finished loading solution '{solutionPath}'");
-
-                await new MyFirstAnalyzer().Analyze(solution);
-
-                foreach (var project in solution.Projects)
+                foreach (var document in project.Documents)
                 {
-                    foreach (var document in project.Documents)
+                    var root = await document.GetSyntaxRootAsync();
+                    var model = await document.GetSemanticModelAsync();
+                    var newSource = root;
+                    for (var i = 0; i < rewriterFactories.Count; i++)
                     {
-                        var root = await document.GetSyntaxRootAsync();
-                        var model = await document.GetSemanticModelAsync();
-                        var newSource = new MyRewriter(model).Visit(root);
-                        
-                        if (newSource != await document.GetSyntaxRootAsync())
-                        {
-                            File.WriteAllText(document.FilePath+".fix", newSource.ToFullString());
-                        }
+                        var rewriter = rewriterFactories[i].factory(model);
+                        var sw = Stopwatch.StartNew();
+                        newSource = rewriter.Visit(newSource);
+                        time[i] += sw.Elapsed;
+                    }
+
+                    if (newSource != await document.GetSyntaxRootAsync())
+                    {
+                        File.WriteAllText(document.FilePath + ".fix", newSource.ToFullString());
                     }
                 }
+            }
+
+            Console.WriteLine("Rewriters total time:");
+            for (var i = 0; i < rewriterFactories.Count; i++)
+            {
+                Console.WriteLine("\t"+rewriterFactories[i].name + ":\t " + time[i]);
             }
         }
 

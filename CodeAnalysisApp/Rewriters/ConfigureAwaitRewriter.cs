@@ -1,46 +1,42 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
-namespace CodeAnalysisApp
+namespace CodeAnalysisApp.Rewriters
 {
-    public class MyRewriter : CSharpSyntaxRewriter
+    public class ConfigureAwaitRewriter : CSharpSyntaxRewriter
     {
         private readonly SemanticModel model;
         private readonly INamedTypeSymbol attributeSymbol;
-        private const string ATTR_NAME = "TestConsoleApplication.ExpectConfigureAwaitTrueAttribute";
+        private readonly INamedTypeSymbol taskSymbol;
+        private readonly INamedTypeSymbol genericTaskSymbol;
+        private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContext";
 
-        public MyRewriter(SemanticModel model)
+        public ConfigureAwaitRewriter(SemanticModel model)
         {
             this.model = model;
             attributeSymbol = model.Compilation.GetTypeByMetadataName(ATTR_NAME);
+            taskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task).FullName);
+            genericTaskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task<>).FullName);
         }
 
-        private bool expectedConfigureAwaitArgument = false;
-
-        private static bool HasParent(SyntaxNode node, SyntaxNode expectedParent)
-        {
-            while (true)
-            {
-                if (node == expectedParent)
-                    return true;
-
-                if (node == null)
-                    return false;
-
-                node = node.Parent;
-            }
-        }
+        private bool expectedConfigureAwaitArgument;
+        private bool insideAwaitExpression = false;
 
         public override SyntaxNode VisitAwaitExpression(AwaitExpressionSyntax node)
         {
             var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, node.Expression);
 
-            if (expressionTypeInfo.Type.ToDisplayString() == typeof(Task).FullName)
+            if (IsTaskCompletedTaskExpression(node.Expression))
+            {
+                return node;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type, taskSymbol) ||
+                SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type.OriginalDefinition, genericTaskSymbol))
             {
                 if (expectedConfigureAwaitArgument != true)
                 {
@@ -55,9 +51,22 @@ namespace CodeAnalysisApp
             }
 
 
+            var oldInsideAwait = insideAwaitExpression;
+            insideAwaitExpression = true;
             var nodeToReturn = base.VisitAwaitExpression(node);
-
+            insideAwaitExpression = oldInsideAwait;
+            
             return nodeToReturn;
+        }
+
+        private bool IsTaskCompletedTaskExpression(ExpressionSyntax expressionSyntax)
+        {
+            if (expressionSyntax is not MemberAccessExpressionSyntax maes)
+                return false;
+            var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, maes.Expression);
+
+            return SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type, taskSymbol) &&
+                   maes.Name.Identifier.Text == "CompletedTask";
         }
 
         private static ArgumentListSyntax ArgumentListWithOneBoolArgument(bool arg) =>
@@ -66,26 +75,6 @@ namespace CodeAnalysisApp
                     Argument(
                         LiteralExpression(arg ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression)));
 
-
-        private bool? DetermineConfigureAwaitArgument(AwaitExpressionSyntax awaitNode)
-        {
-            var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, awaitNode.Expression);
-
-            if (expressionTypeInfo.Type.ToDisplayString() == typeof(Task).FullName)
-                return true;
-
-            foreach (var descNode in awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
-            {
-                var a = ModelExtensions.GetSymbolInfo(model, descNode.Expression);
-
-                if (a.Symbol?.ToDisplayString() != "System.Threading.Tasks.Task.ConfigureAwait(bool)")
-                    continue;
-
-                return descNode.ArgumentList.Arguments.First().Expression.Kind() == SyntaxKind.TrueLiteralExpression;
-            }
-
-            return null;
-        }
 
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node) =>
             VisitClassOrMethodExpression(node, () => base.VisitMethodDeclaration(node));
@@ -107,8 +96,15 @@ namespace CodeAnalysisApp
             return nodeToReturn;
         }
 
+        public override SyntaxNode VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node) => node;
+
+        public override SyntaxNode VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node) => node;
+
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {
+            if (!insideAwaitExpression)
+                return base.VisitInvocationExpression(node);
+            
             var a = ModelExtensions.GetSymbolInfo(model, node.Expression);
 
             if (a.Symbol?.ToDisplayString() != "System.Threading.Tasks.Task.ConfigureAwait(bool)")

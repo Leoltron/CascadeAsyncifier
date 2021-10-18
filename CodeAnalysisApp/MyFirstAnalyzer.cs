@@ -13,7 +13,9 @@ namespace CodeAnalysisApp
     {
         private SemanticModel model;
         private INamedTypeSymbol attributeSymbol;
-        private const string ATTR_NAME = "TestConsoleApplication.ExpectConfigureAwaitTrueAttribute";
+        private INamedTypeSymbol taskSymbol;
+        private INamedTypeSymbol genericTaskSymbol;
+        private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContextAttribute";
         private int errorsTotal;
         private readonly Dictionary<string, List<(LinePosition, bool, string)>> dictionary = new();
 
@@ -53,6 +55,8 @@ namespace CodeAnalysisApp
 
             model = await document.GetSemanticModelAsync();
             attributeSymbol = model.Compilation.GetTypeByMetadataName(ATTR_NAME);
+            taskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task).FullName);
+            genericTaskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task<>).FullName);
             Analyze(document.Name, root, false);
         }
 
@@ -105,7 +109,8 @@ namespace CodeAnalysisApp
         {
             var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, awaitNode.Expression);
 
-            if (expressionTypeInfo.Type.ToDisplayString().StartsWith(typeof(Task).FullName!))
+            if (SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type, taskSymbol) ||
+                SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type.OriginalDefinition, genericTaskSymbol))
                 return true;
             
             foreach (var descNode in awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>())

@@ -5,21 +5,26 @@ using Microsoft.CodeAnalysis.MSBuild;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Rewriters;
+using CodeAnalysisApp.Utils;
 
 namespace CodeAnalysisApp
 {
     class Program
     {
-        private static readonly IList<(Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)> rewriterFactories =
-            new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
-            {
-                (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
-                (_ => new AsyncVoidRewriter(), "async void"),
-            };
+        private static readonly IList<(Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)>
+            rewriterFactories =
+                new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
+                {
+                    (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
+                    (_ => new AsyncVoidRewriter(), "async void"),
+                    (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
+                };
 
         static async Task Main(string[] args)
         {
@@ -41,36 +46,55 @@ namespace CodeAnalysisApp
 
             //await new MyFirstAnalyzer().Analyze(solution);
 
+
             var time = new TimeSpan[rewriterFactories.Count];
-
-            foreach (var project in solution.Projects)
-            {
-                foreach (var document in project.Documents)
-                {
-                    var root = await document.GetSyntaxRootAsync();
-                    var model = await document.GetSemanticModelAsync();
-                    var newSource = root;
-                    for (var i = 0; i < rewriterFactories.Count; i++)
-                    {
-                        var rewriter = rewriterFactories[i].factory(model);
-                        var sw = Stopwatch.StartNew();
-                        newSource = rewriter.Visit(newSource);
-                        time[i] += sw.Elapsed;
-                    }
-
-                    if (newSource != await document.GetSyntaxRootAsync())
-                    {
-                        File.WriteAllText(document.FilePath + ".fix", newSource.ToFullString());
-                    }
-                }
-            }
+            await NewMethod(workspace, solution, time);
 
             Console.WriteLine("Rewriters total time:");
             for (var i = 0; i < rewriterFactories.Count; i++)
             {
-                Console.WriteLine("\t"+rewriterFactories[i].name + ":\t " + time[i]);
+                Console.WriteLine("\t" + rewriterFactories[i].name + ":\t " + time[i]);
             }
         }
+
+        private static async Task NewMethod(Workspace workspace, Solution solution, TimeSpan[] time)
+        {
+            for (var i = 0; i < rewriterFactories.Count; i++)
+            {
+                foreach (var project in solution.Projects)
+                {
+                    foreach (var document in project.Documents)
+                    {
+                        var root = await document.GetSyntaxRootAsync();
+                        var model = await document.GetSemanticModelAsync();
+                        var newSource = root;
+                        var rewriter = rewriterFactories[i].factory(model);
+                        var sw = Stopwatch.StartNew();
+                        newSource = rewriter.Visit(newSource);
+                        time[i] += sw.Elapsed;
+
+                        var oldText = (await document.GetSyntaxRootAsync()).GetText();
+                        if (!newSource.GetText().ContentEquals(oldText))
+                        {
+                            var newDoc = document.WithSyntaxRoot(newSource);
+
+                            if (oldText.ToString().EqualsIgnoreWhitespace(newSource.GetText().ToString()))
+                                continue;
+
+                            var newSolution = newDoc.Project.Solution;
+
+                            if (!workspace.TryApplyChanges(newSolution))
+                                throw new Exception("Can't apply changes");
+                            
+                            await NewMethod(workspace, workspace.CurrentSolution, time);
+
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
 
         private static void RegisterVSMSBuild()
         {

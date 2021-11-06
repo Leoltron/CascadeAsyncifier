@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -43,7 +44,7 @@ namespace CodeAnalysisApp.Rewriters
 
         private static bool ContainsAsyncVoid(MethodDeclarationSyntax node)
         {
-            if (!node.Modifiers.Select(m => m.Kind()).Contains(SyntaxKind.AsyncKeyword))
+            if (!node.IsAsync())
             {
                 return false;
             }

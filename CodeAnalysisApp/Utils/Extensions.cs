@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace CodeAnalysisApp
+namespace CodeAnalysisApp.Utils
 {
     public static class Extensions
     {
@@ -34,5 +35,18 @@ namespace CodeAnalysisApp
 
             return val;
         }
+
+        public static bool IsAsync(this MethodDeclarationSyntax methodDeclarationSyntax) => 
+            methodDeclarationSyntax.Modifiers.Select(m => m.Kind()).Contains(SyntaxKind.AsyncKeyword);
+        public static bool IsAsync(this LocalFunctionStatementSyntax methodDeclarationSyntax) => 
+            methodDeclarationSyntax.Modifiers.Select(m => m.Kind()).Contains(SyntaxKind.AsyncKeyword);
+
+        public static bool SymbolEquals(this ITypeSymbol one, ITypeSymbol other)
+        {
+            return SymbolEqualityComparer.Default.Equals(one, other);
+        }
+
+        public static bool IsEmpty(this SyntaxToken token) =>
+            token.IsMissing || token.ValueText.IsNullOrWhiteSpace();
     }
 }

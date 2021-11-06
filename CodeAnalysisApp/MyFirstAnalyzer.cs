@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -109,10 +110,10 @@ namespace CodeAnalysisApp
         {
             var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, awaitNode.Expression);
 
-            if (SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type, taskSymbol) ||
-                SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type.OriginalDefinition, genericTaskSymbol))
+            if (expressionTypeInfo.Type.SymbolEquals(taskSymbol) ||
+                expressionTypeInfo.Type.OriginalDefinition.SymbolEquals(genericTaskSymbol))
                 return true;
-            
+
             foreach (var descNode in awaitNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 var a = ModelExtensions.GetSymbolInfo(model, descNode.Expression);
@@ -122,7 +123,7 @@ namespace CodeAnalysisApp
 
                 return descNode.ArgumentList.Arguments.First().Expression.Kind() == SyntaxKind.TrueLiteralExpression;
             }
-            
+
             return null;
         }
     }

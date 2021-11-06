@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -35,8 +36,8 @@ namespace CodeAnalysisApp.Rewriters
                 return node;
             }
 
-            if (SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type, taskSymbol) ||
-                SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type.OriginalDefinition, genericTaskSymbol))
+            if (expressionTypeInfo.Type.SymbolEquals(taskSymbol) ||
+                expressionTypeInfo.Type.OriginalDefinition.SymbolEquals( genericTaskSymbol))
             {
                 if (expectedConfigureAwaitArgument != true)
                 {

@@ -129,8 +129,13 @@ namespace CodeAnalysisApp.Rewriters
                     return base.VisitInvocationExpression(node);
             }
 
-            if (argument != expectedConfigureAwaitArgument)
+            if (argument != expectedConfigureAwaitArgument || argument)
             {
+                if (expectedConfigureAwaitArgument && node.Expression is MemberAccessExpressionSyntax expression)
+                {
+                    return expression.Expression;
+                }
+                
                 return InvocationExpression(
                     node.Expression,
                     ArgumentListWithOneBoolArgument(expectedConfigureAwaitArgument));

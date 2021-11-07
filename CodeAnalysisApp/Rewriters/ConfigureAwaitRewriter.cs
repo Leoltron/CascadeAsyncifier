@@ -14,7 +14,7 @@ namespace CodeAnalysisApp.Rewriters
         private readonly INamedTypeSymbol attributeSymbol;
         private readonly INamedTypeSymbol taskSymbol;
         private readonly INamedTypeSymbol genericTaskSymbol;
-        private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContext";
+        private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContextAttribute";
 
         public ConfigureAwaitRewriter(SemanticModel model)
         {

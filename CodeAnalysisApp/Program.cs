@@ -5,10 +5,8 @@ using Microsoft.CodeAnalysis.MSBuild;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
@@ -44,11 +42,7 @@ namespace CodeAnalysisApp
             var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
             Console.WriteLine($"Finished loading solution '{solutionPath}'");
 
-            //await new MyFirstAnalyzer().Analyze(solution);
-
-
-            var time = new TimeSpan[rewriterFactories.Count];
-            await NewMethod(workspace, solution, time);
+            var time = await Rewrite(workspace);
 
             Console.WriteLine("Rewriters total time:");
             for (var i = 0; i < rewriterFactories.Count; i++)
@@ -57,42 +51,39 @@ namespace CodeAnalysisApp
             }
         }
 
-        private static async Task NewMethod(Workspace workspace, Solution solution, TimeSpan[] time)
+        private static async Task<TimeSpan[]> Rewrite(MSBuildWorkspace workspace)
         {
+            var time = new TimeSpan[rewriterFactories.Count];
+
+            var solutionTraverser = new MutableSolutionTraverser(workspace);
             for (var i = 0; i < rewriterFactories.Count; i++)
             {
-                foreach (var project in solution.Projects)
-                {
-                    foreach (var document in project.Documents)
+                var sw = Stopwatch.StartNew();
+                var rewriterAndName = rewriterFactories[i];
+                await solutionTraverser.TraverseAsync(
+                    async document =>
                     {
                         var root = await document.GetSyntaxRootAsync();
                         var model = await document.GetSemanticModelAsync();
                         var newSource = root;
-                        var rewriter = rewriterFactories[i].factory(model);
-                        var sw = Stopwatch.StartNew();
+                        var rewriter = rewriterAndName.factory(model);
                         newSource = rewriter.Visit(newSource);
-                        time[i] += sw.Elapsed;
 
                         var oldText = (await document.GetSyntaxRootAsync()).GetText();
-                        if (!newSource.GetText().ContentEquals(oldText))
-                        {
-                            var newDoc = document.WithSyntaxRoot(newSource);
+                        var newSourceText = newSource.GetText();
 
-                            if (oldText.ToString().EqualsIgnoreWhitespace(newSource.GetText().ToString()))
-                                continue;
+                        if (newSourceText.ContentEquals(oldText))
+                            return TraverseResult.Continue;
 
-                            var newSolution = newDoc.Project.Solution;
+                        return oldText.ToString().EqualsIgnoreWhitespace(newSourceText.ToString())
+                            ? TraverseResult.Continue
+                            : TraverseResult.Reload(document.WithSyntaxRoot(newSource));
 
-                            if (!workspace.TryApplyChanges(newSolution))
-                                throw new Exception("Can't apply changes");
-                            
-                            await NewMethod(workspace, workspace.CurrentSolution, time);
-
-                            return;
-                        }
-                    }
-                }
+                    });
+                time[i] += sw.Elapsed;
             }
+
+            return time;
         }
 
 

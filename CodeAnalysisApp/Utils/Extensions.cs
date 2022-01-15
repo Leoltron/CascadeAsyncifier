@@ -23,21 +23,10 @@ namespace CodeAnalysisApp.Utils
                        .Any(a => SymbolEqualityComparer.Default.Equals(attributeSymbol, a));
         }
 
-        public static TValue AddOrCreate<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key)
-            where TValue : new()
-        {
-            if (!dictionary.TryGetValue(key, out var val))
-            {
-                val = new TValue();
-                dictionary[key] = val;
-            }
-
-            return val;
-        }
-
-        public static bool IsAsync(this MethodDeclarationSyntax methodDeclarationSyntax) => 
+        public static bool IsAsync(this MethodDeclarationSyntax methodDeclarationSyntax) =>
             methodDeclarationSyntax.Modifiers.Select(m => m.Kind()).Contains(SyntaxKind.AsyncKeyword);
-        public static bool IsAsync(this LocalFunctionStatementSyntax methodDeclarationSyntax) => 
+
+        public static bool IsAsync(this LocalFunctionStatementSyntax methodDeclarationSyntax) =>
             methodDeclarationSyntax.Modifiers.Select(m => m.Kind()).Contains(SyntaxKind.AsyncKeyword);
 
         public static bool SymbolEquals(this ITypeSymbol one, ITypeSymbol other)
@@ -45,7 +34,7 @@ namespace CodeAnalysisApp.Utils
             return SymbolEqualityComparer.Default.Equals(one, other);
         }
 
-        public static bool IsEmpty(this SyntaxToken token) =>
-            token.IsMissing || token.ValueText.IsNullOrWhiteSpace();
+        public static bool IsEmpty(this SyntaxToken token) => token.IsMissing || token.ValueText.IsNullOrWhiteSpace();
+
     }
 }

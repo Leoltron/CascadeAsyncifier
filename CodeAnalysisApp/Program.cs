@@ -19,10 +19,11 @@ namespace CodeAnalysisApp
             rewriterFactories =
                 new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
                 {
+                    (_ => new AsyncVoidRewriter(), "async void"),
                     (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
                     (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
                     (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
-                    (_ => new AsyncVoidRewriter(), "async void"),
+                    (_ => new OnlyAwaitInReturnAsyncMethodRewriter(), "Only one await in return"),
                 };
 
         static async Task Main(string[] args)

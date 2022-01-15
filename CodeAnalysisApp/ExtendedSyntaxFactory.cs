@@ -13,14 +13,14 @@ namespace CodeAnalysisApp
             if (!identifierNames.Any())
                 throw new InvalidOperationException("Sequence contains no elements");
 
-            var identifierNameSyntaxes = identifierNames.Select(IdentifierName).ToList();
+            var identifierNameSyntaxList = identifierNames.Select(IdentifierName).ToList();
 
-            if (identifierNameSyntaxes.Count == 1)
-                return SyntaxFactory.UsingDirective(identifierNameSyntaxes.Single());
+            if (identifierNameSyntaxList.Count == 1)
+                return SyntaxFactory.UsingDirective(identifierNameSyntaxList.Single());
 
             return SyntaxFactory.UsingDirective(
-                identifierNameSyntaxes.Skip(2)
-                    .Aggregate(QualifiedName(identifierNameSyntaxes[0], identifierNameSyntaxes[1]), QualifiedName));
+                identifierNameSyntaxList.Skip(2)
+                    .Aggregate(QualifiedName(identifierNameSyntaxList[0], identifierNameSyntaxList[1]), QualifiedName));
         }
     }
 }

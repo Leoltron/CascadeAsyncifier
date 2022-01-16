@@ -7,8 +7,70 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeAnalysisApp.Rewriters
 {
-    public class OnlyAwaitInReturnAsyncMethodRewriter : InAsyncMethodContextRewriter
+    public class OnlyAwaitInAsyncLambdaRewriter : InAsyncMethodContextRewriter
     {
+        protected override SyntaxNode VisitMethodDeclarationWithContext(MethodDeclarationSyntax node)
+        {
+            var lastNode = node.ChildNodes().LastOrDefault();
+
+            if (lastNode is not ArrowExpressionClauseSyntax arrowExpression)
+                return base.VisitMethodDeclarationWithContext(node);
+            
+            if(!TryDeasyncifyAwaitExpressionWrapper(arrowExpression, out var deasyncifiedArrowExp))
+                return base.VisitMethodDeclarationWithContext(node);
+
+            return node.ReplaceNode(arrowExpression, deasyncifiedArrowExp).WithoutAsyncModifier();
+        }
+
+        protected override SyntaxNode VisitLocalFunctionStatementWithContext(LocalFunctionStatementSyntax node)
+        {
+            var lastNode = node.ChildNodes().LastOrDefault();
+
+            if (lastNode is not ArrowExpressionClauseSyntax arrowExpression)
+                return base.VisitLocalFunctionStatementWithContext(node);
+            
+            if(!TryDeasyncifyAwaitExpressionWrapper(arrowExpression, out var deasyncifiedArrowExp))
+                return base.VisitLocalFunctionStatementWithContext(node);
+
+            return node.ReplaceNode(arrowExpression, deasyncifiedArrowExp).WithoutAsyncModifier().WithTriviaFrom(node);
+        }
+
+        protected override SyntaxNode VisitParenthesizedLambdaExpressionWithContext(
+            ParenthesizedLambdaExpressionSyntax node)
+        {
+            if(!TryDeasyncifyAwaitExpressionWrapper(node, out var deasyncifiedNode))
+                return base.VisitParenthesizedLambdaExpressionWithContext(node);
+
+            return deasyncifiedNode.WithoutAsyncModifier();
+        }
+
+        protected override SyntaxNode VisitSimpleLambdaExpressionWithContext(SimpleLambdaExpressionSyntax node)
+        {
+            if(!TryDeasyncifyAwaitExpressionWrapper(node, out var deasyncifiedNode))
+                return base.VisitSimpleLambdaExpressionWithContext(node);
+
+            return deasyncifiedNode.WithoutAsyncModifier();
+        }
+
+        private bool TryDeasyncifyAwaitExpressionWrapper<TNode>(
+            TNode arrowExpression,
+            out TNode expression) where  TNode : SyntaxNode
+        {
+            if (arrowExpression.ChildNodes().Last() is not AwaitExpressionSyntax awaitExpression)
+            {
+                expression = null;
+
+                return false;
+            }
+
+            expression = arrowExpression.ReplaceNode(
+                awaitExpression,
+                ((AwaitExpressionSyntax)base.Visit(awaitExpression)).Deasyncify());
+
+            return true;
+        }
+        
+        /*
         private bool InvalidForRefactoring
         {
             get => CurrentContext.GetOrDefault("InvalidForRefactoring", false);
@@ -33,34 +95,34 @@ namespace CodeAnalysisApp.Rewriters
             set => CurrentContext["DeasyncifyReturn"] = value;
         }
 
-        private void OnAwaitReturnFound()
-        {
-            if (DeasyncifyReturn)
-                return;
+       private void OnAwaitReturnFound()
+       {
+           if (DeasyncifyReturn)
+               return;
+           
+           if (FoundAwaitReturn)
+           {
+               InvalidForRefactoring = true;
+           }
+           else
+           {
+               FoundAwaitReturn = true;
+           }
+       }
 
-            if (FoundAwaitReturn)
-            {
-                InvalidForRefactoring = true;
-            }
-            else
-            {
-                FoundAwaitReturn = true;
-            }
-        }
+       private void OnRegularReturnFound()
+       {
+           if (DeasyncifyReturn)
+               return;
 
-        private void OnRegularReturnFound()
-        {
-            if (DeasyncifyReturn)
-                return;
-
-            InvalidForRefactoring = true;
-        }
+           InvalidForRefactoring = true;
+       }
+       
 
         public override SyntaxNode VisitAwaitExpression(AwaitExpressionSyntax node)
         {
             if (node.Parent is not ReturnStatementSyntax)
                 InvalidForRefactoring = true;
-
             return base.VisitAwaitExpression(node);
         }
 
@@ -70,16 +132,13 @@ namespace CodeAnalysisApp.Rewriters
             {
                 return VisitAndDeasyncifyReturn(node);
             }
-
+            
             var baseVisitedReturn = base.VisitReturnStatement(node);
-
             if (!InAsyncMethod || InvalidForRefactoring || !node.ChildNodes().Any())
                 return baseVisitedReturn;
-
-            if (node.ChildNodes().First() is not AwaitExpressionSyntax || FoundAwaitReturn)
-            {
+            
+            if(node.ChildNodes().First() is not AwaitExpressionSyntax || FoundAwaitReturn){
                 OnRegularReturnFound();
-
                 return baseVisitedReturn;
             }
 
@@ -93,15 +152,13 @@ namespace CodeAnalysisApp.Rewriters
             if (returnStatement.Expression is not AwaitExpressionSyntax awaitExpression)
                 throw new InvalidOperationException("Tried to deasyncify return without await expression at its root");
 
-            var expression = awaitExpression.Deasyncify();
+            var expression = Deasyncify(awaitExpression);
 
             return returnStatement.WithExpression((ExpressionSyntax)Visit(expression));
+            
         }
 
-        protected override void BeforeVisit(
-            IDictionary<string, object> parentContext,
-            IDictionary<string, object> nodeContext,
-            SyntaxNode node)
+        protected override void BeforeVisit(IDictionary<string, object> parentContext, IDictionary<string, object> nodeContext, SyntaxNode node)
         {
             nodeContext["DeasyncifyReturn"] = parentContext.GetOrDefault("DeasyncifyChildReturn", false);
         }
@@ -114,7 +171,6 @@ namespace CodeAnalysisApp.Rewriters
             if (DeasyncifyReturn || InvalidForRefactoring || !FoundAwaitReturn)
             {
                 parentContext["DeasyncifyChildReturn"] = false;
-
                 return nodeAfterVisit;
             }
 
@@ -127,44 +183,25 @@ namespace CodeAnalysisApp.Rewriters
         protected override SyntaxNode VisitSimpleLambdaExpressionWithContext(SimpleLambdaExpressionSyntax node)
         {
             var visitedNode = base.VisitSimpleLambdaExpressionWithContext(node);
-
             return !DeasyncifyReturn ? visitedNode : ((SimpleLambdaExpressionSyntax)visitedNode).WithoutAsyncModifier();
         }
 
-        protected override SyntaxNode VisitParenthesizedLambdaExpressionWithContext(
-            ParenthesizedLambdaExpressionSyntax node)
+        protected override SyntaxNode VisitParenthesizedLambdaExpressionWithContext(ParenthesizedLambdaExpressionSyntax node)
         {
             var visitedNode = base.VisitParenthesizedLambdaExpressionWithContext(node);
-
-            return !DeasyncifyReturn
-                ? visitedNode
-                : ((ParenthesizedLambdaExpressionSyntax)visitedNode).WithoutAsyncModifier();
+            return !DeasyncifyReturn ? visitedNode : ((ParenthesizedLambdaExpressionSyntax)visitedNode).WithoutAsyncModifier();
         }
 
         protected override SyntaxNode VisitAnonymousMethodExpressionWithContext(AnonymousMethodExpressionSyntax node)
         {
             var visitedNode = base.VisitAnonymousMethodExpressionWithContext(node);
-
-            return !DeasyncifyReturn
-                ? visitedNode
-                : ((AnonymousMethodExpressionSyntax)visitedNode).WithoutAsyncModifier();
+            return !DeasyncifyReturn ? visitedNode : ((AnonymousMethodExpressionSyntax)visitedNode).WithoutAsyncModifier();
         }
 
         protected override SyntaxNode VisitMethodDeclarationWithContext(MethodDeclarationSyntax node)
         {
             var visitedNode = base.VisitMethodDeclarationWithContext(node);
-
             return !DeasyncifyReturn ? visitedNode : ((MethodDeclarationSyntax)visitedNode).WithoutAsyncModifier();
-        }
-
-
-        protected override SyntaxNode VisitLocalFunctionStatementWithContext(LocalFunctionStatementSyntax node)
-        {
-            var visitedNode = base.VisitLocalFunctionStatementWithContext(node);
-
-            return !DeasyncifyReturn
-                ? visitedNode
-                : ((LocalFunctionStatementSyntax)visitedNode).WithoutAsyncModifier().WithTriviaFrom(node);
-        }
+        }*/
     }
 }

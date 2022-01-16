@@ -35,6 +35,18 @@ namespace CodeAnalysisApp.Utils
         }
 
         public static bool IsEmpty(this SyntaxToken token) => token.IsMissing || token.ValueText.IsNullOrWhiteSpace();
+        
+        public static ExpressionSyntax Deasyncify(this AwaitExpressionSyntax awaitExpression)
+        {
+            var expression = awaitExpression.Expression is InvocationExpressionSyntax
+            {
+                Expression: MemberAccessExpressionSyntax memberAccessExpr
+            } && memberAccessExpr.Name.Identifier.Text == "ConfigureAwait"
+                ? memberAccessExpr.Expression
+                : awaitExpression.Expression;
+
+            return expression;
+        }
 
     }
 }

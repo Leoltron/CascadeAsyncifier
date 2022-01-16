@@ -70,18 +70,24 @@ namespace CodeAnalysisApp.Rewriters
                    maes.Name.Identifier.Text == "CompletedTask";
         }
 
-        private static ArgumentListSyntax ArgumentListWithOneBoolArgument(bool arg) =>
-            ArgumentList()
-               .AddArguments(
+        private static ArgumentListSyntax ArgumentListWithOneBoolArgument(bool arg)
+        {
+            return ArgumentList()
+                .AddArguments(
                     Argument(
                         LiteralExpression(arg ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression)));
+        }
 
 
-        public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node) =>
-            VisitClassOrMethodExpression(node, () => base.VisitMethodDeclaration(node));
+        public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
+        {
+            return VisitClassOrMethodExpression(node, () => base.VisitMethodDeclaration(node));
+        }
 
-        public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node) =>
-            VisitClassOrMethodExpression(node, () => base.VisitClassDeclaration(node));
+        public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
+        {
+            return VisitClassOrMethodExpression(node, () => base.VisitClassDeclaration(node));
+        }
 
         private SyntaxNode VisitClassOrMethodExpression(MemberDeclarationSyntax memberNode, Func<SyntaxNode> baseVisit)
         {
@@ -97,9 +103,15 @@ namespace CodeAnalysisApp.Rewriters
             return nodeToReturn;
         }
 
-        public override SyntaxNode VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node) => node;
+        public override SyntaxNode VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
+        {
+            return node;
+        }
 
-        public override SyntaxNode VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node) => node;
+        public override SyntaxNode VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
+        {
+            return node;
+        }
 
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {

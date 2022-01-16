@@ -24,6 +24,8 @@ namespace CodeAnalysisApp
                     (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
                     (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
                     (_ => new OnlyAwaitInReturnAsyncMethodRewriter(), "Only one await in return"),
+                    (_ => new OnlyAwaitInAsyncLambdaRewriter(), "One statement in lambda"),
+                    (m => new AsyncMethodEndsWithAwaitExpressionRewriter(m), "Only one await at the end of method"),
                 };
 
         static async Task Main(string[] args)

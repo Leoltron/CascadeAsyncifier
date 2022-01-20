@@ -20,6 +20,7 @@ namespace CodeAnalysisApp
             rewriterFactories =
                 new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
                 {
+                    (m => new UseAsyncMethodRewriter(m), "Use async method"),
                     (_ => new AsyncVoidRewriter(), "async void"),
                     (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
                     (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
@@ -27,7 +28,6 @@ namespace CodeAnalysisApp
                     (_ => new OnlyAwaitInReturnAsyncMethodRewriter(), "Only one await in return"),
                     (_ => new OnlyAwaitInAsyncLambdaRewriter(), "One statement in lambda"),
                     (m => new AsyncMethodEndsWithAwaitExpressionRewriter(m), "Only one await at the end of method"),
-                    (m => new UseAsyncMethodRewriter(m), "Use async method"),
                 };
 
         static async Task Main(string[] args)
@@ -61,7 +61,7 @@ namespace CodeAnalysisApp
         {
             var time = new TimeSpan[rewriterFactories.Count];
 
-            await new CascadeAsyncifier().Start(workspace.CurrentSolution);
+            await new CascadeAsyncifier().Start(workspace);
             var solutionTraverser = new MutableSolutionTraverser(workspace);
             for (var i = 0; i < rewriterFactories.Count; i++)
             {

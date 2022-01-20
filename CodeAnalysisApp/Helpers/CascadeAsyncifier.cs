@@ -1,18 +1,22 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace CodeAnalysisApp.Helpers
 {
     public class CascadeAsyncifier
     {
-        public async Task Start(Solution solution )
+        private readonly ISyncAsyncMethodPairProvider provider = new HardcodeSyncAsyncMethodPairProvider();
+        public async Task Start(Workspace workspace)
         {
+            var solution = workspace.CurrentSolution;
             var docTasks = solution.Projects
                 .SelectMany(p => p.Documents.Select(document => (document, task: TraverseDocument(document))))
                 .ToList();
@@ -31,20 +35,23 @@ namespace CodeAnalysisApp.Helpers
             while (asyncifableMethodsQueue.Any())
             {
                 var methodSymbol = asyncifableMethodsQueue.Dequeue();
+                
                 var callers = await SymbolFinder.FindCallersAsync(methodSymbol, solution);
                 foreach (var callerInfo in callers.Where(f => f.IsDirect))
                 {
                     var callingSymbol = (IMethodSymbol)callerInfo.CallingSymbol;
-                    
+
                     if (callingSymbol.MethodKind != MethodKind.Ordinary)
                     {
                         continue;
                     }
 
-                    var methodSyntax = (MethodDeclarationSyntax)await callingSymbol.DeclaringSyntaxReferences.First().GetSyntaxAsync();
-                    if(methodSyntax.IsAsync())
+                    var methodSyntax =
+                        (MethodDeclarationSyntax)await callingSymbol.DeclaringSyntaxReferences.First().GetSyntaxAsync();
+
+                    if (methodSyntax.IsAsync())
                         continue;
-                    
+
                     var classSyntax = methodSyntax.Parent as ClassDeclarationSyntax;
                     var document = solution.GetDocument(methodSyntax.SyntaxTree);
 
@@ -56,20 +63,45 @@ namespace CodeAnalysisApp.Helpers
                     {
                         continue;
                     }
-                        
+                    
                     asyncifableMethodsQueue.Enqueue(callingSymbol);
 
                     var classPair = new ClassSyntaxSemanticPair(classSyntax, classSymbol);
-                    var methodPair = new MethodSyntaxSemanticPair(methodSyntax, methodSymbol);
+                    var methodPair = new MethodSyntaxSemanticPair(methodSyntax, callingSymbol);
                     if (!classToMethods.ContainsKey(classPair))
                     {
                         documentToClasses.AddToDictList(document, classPair);
                     }
+
                     classToMethods.AddToDictList(classPair, methodPair);
                 }
             }
             
-            
+            var slnEditor = new SolutionEditor(workspace.CurrentSolution);
+            var docClassPairs = documentToClasses.Where(v => v.Value.Any()).ToList();
+            foreach (var docClassPair in docClassPairs)
+            {
+                var document = docClassPair.Key;
+                var editor = await slnEditor.GetDocumentEditorAsync(document.Id);
+                var root = await document.GetSyntaxRootAsync();
+
+                foreach (var method in docClassPair.Value.SelectMany(pair => classToMethods[pair]))
+                {
+                    if (provider.Provide().Any(m => m.MatchSyncMethod(method.Symbol)))
+                    {
+                        continue;
+                    }
+                    
+                    editor.InsertAfter(method.Node, method.Node.WithAsyncSignatureAndName());
+
+                    var name = method.Symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+                    HardcodeSyncAsyncMethodPairProvider.Pairs.Add((name,name.Replace("(", "Async(")));
+                }
+                editor.ReplaceNode(root, (n, gen) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
+            }
+
+            workspace.TryApplyChanges(slnEditor.GetChangedSolution());
+
         }
 
         private static async Task<Dictionary<ClassSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(

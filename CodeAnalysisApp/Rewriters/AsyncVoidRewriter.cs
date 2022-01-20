@@ -24,10 +24,7 @@ namespace CodeAnalysisApp.Rewriters
             if (baseNode is not CompilationUnitSyntax cu || !addTaskUsingIfNeeded)
                 return baseNode;
 
-            if (cu.Usings.Any(u => u.Name.ToString() == "System.Threading.Tasks"))
-                return baseNode;
-
-            return cu.AddUsings(UsingDirective("System", "Threading", "Tasks"));
+            return cu.WithTasksUsingDirective();
         }
 
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)

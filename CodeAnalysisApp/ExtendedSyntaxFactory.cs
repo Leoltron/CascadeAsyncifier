@@ -1,8 +1,8 @@
 using System;
 using System.Linq;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace CodeAnalysisApp
 {
@@ -13,14 +13,22 @@ namespace CodeAnalysisApp
             if (!identifierNames.Any())
                 throw new InvalidOperationException("Sequence contains no elements");
 
-            var identifierNameSyntaxList = identifierNames.Select(IdentifierName).ToList();
+            var identifierNameSyntaxList = identifierNames.Select(SyntaxFactory.IdentifierName).ToList();
 
             if (identifierNameSyntaxList.Count == 1)
-                return SyntaxFactory.UsingDirective(identifierNameSyntaxList.Single());
+                return UsingDirective(identifierNameSyntaxList.Single());
 
-            return SyntaxFactory.UsingDirective(
-                identifierNameSyntaxList.Skip(2)
-                    .Aggregate(QualifiedName(identifierNameSyntaxList[0], identifierNameSyntaxList[1]), QualifiedName));
+            var nameSyntax = identifierNameSyntaxList.Skip(2)
+                .Aggregate(SyntaxFactory.QualifiedName(identifierNameSyntaxList[0], identifierNameSyntaxList[1]), SyntaxFactory.QualifiedName);
+
+            return UsingDirective(nameSyntax);
+        }
+        
+        internal static UsingDirectiveSyntax UsingDirective(NameSyntax nameSyntax)
+        {
+            return SyntaxFactory.UsingDirective(nameSyntax)
+                .WithUsingKeyword(SyntaxFactory.Token(SyntaxKind.UsingKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                .WithTrailingTrivia(SyntaxFactory.LineFeed);
         }
     }
 }

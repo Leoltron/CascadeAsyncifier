@@ -16,7 +16,7 @@ namespace CodeAnalysisApp.Rewriters
         {
             var baseNode = base.VisitCompilationUnit(node);
 
-            return AddUsingIfNeeded(baseNode).NormalizeWhitespace();
+            return AddUsingIfNeeded(baseNode);
         }
 
         private SyntaxNode AddUsingIfNeeded(SyntaxNode baseNode)
@@ -39,7 +39,7 @@ namespace CodeAnalysisApp.Rewriters
 
             addTaskUsingIfNeeded = true;
 
-            return visitedMethodNode.WithReturnType(IdentifierName(nameof(Task)));
+            return visitedMethodNode.WithReturnType(IdentifierName(nameof(Task)).WithTriviaFrom(visitedMethodNode.ReturnType));
         }
 
         private static bool ContainsAsyncVoid(MethodDeclarationSyntax node)

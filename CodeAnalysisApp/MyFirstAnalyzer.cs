@@ -98,7 +98,7 @@ namespace CodeAnalysisApp
             var span = awaitNode.SyntaxTree.GetLineSpan(awaitNode.Span);
             if (actualArg.HasValue && actualArg != expectedConfigureAwaitArgument)
             {
-                dictionary.AddOrCreate(docName)
+                dictionary.GetOrCreate(docName)
                     .Add(
                         (span.StartLinePosition, expectedConfigureAwaitArgument,
                             awaitNode.ToFullString().TrimStart('\n', ' ')));

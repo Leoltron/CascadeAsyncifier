@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
 
@@ -60,6 +61,7 @@ namespace CodeAnalysisApp
         {
             var time = new TimeSpan[rewriterFactories.Count];
 
+            await new CascadeAsyncifier().Start(workspace.CurrentSolution);
             var solutionTraverser = new MutableSolutionTraverser(workspace);
             for (var i = 0; i < rewriterFactories.Count; i++)
             {

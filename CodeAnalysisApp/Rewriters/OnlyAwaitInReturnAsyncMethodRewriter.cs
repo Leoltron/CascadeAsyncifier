@@ -103,6 +103,7 @@ namespace CodeAnalysisApp.Rewriters
             IDictionary<string, object> nodeContext,
             SyntaxNode node)
         {
+            base.BeforeVisit(parentContext, nodeContext, node);
             nodeContext["DeasyncifyReturn"] = parentContext.GetOrDefault("DeasyncifyChildReturn", false);
         }
 

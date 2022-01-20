@@ -14,11 +14,18 @@ namespace CodeAnalysisApp.Rewriters
     public abstract class FunctionContextRewriter : CSharpSyntaxRewriter
     {
         private IDictionary<string, object> currentContext;
+        public int MaxDepth { get; set; } = int.MaxValue; 
 
         protected IDictionary<string, object> CurrentContext
         {
             get => currentContext ??= new Dictionary<string, object>();
             private set => currentContext = value;
+        }
+        
+        protected int FunctionDepth
+        {
+            get => CurrentContext.GetOrDefault("FunctionDepth", 0);
+            set => CurrentContext["FunctionDepth"] = 0;
         }
 
         public sealed override SyntaxNode VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node) =>
@@ -155,6 +162,7 @@ namespace CodeAnalysisApp.Rewriters
             IDictionary<string, object> nodeContext,
             SyntaxNode node)
         {
+            nodeContext["FunctionDepth"] = parentContext.GetOrDefault("FunctionDepth", 0) + 1;
         }
 
         private const int MAX_REVISITS = 8;
@@ -164,6 +172,9 @@ namespace CodeAnalysisApp.Rewriters
             Func<IDictionary<string, object>, IDictionary<string, object>, SyntaxNode, SyntaxNode> afterVisit,
             TNode node) where TNode : SyntaxNode
         {
+            if (FunctionDepth >= MaxDepth)
+                return node;
+            
             var revisits = 0;
             while (true)
             {

@@ -48,5 +48,17 @@ namespace CodeAnalysisApp.Utils
             return expression;
         }
 
+        public static TNode GetFirstParentOfType<TNode>(this SyntaxNode node) where TNode : SyntaxNode
+        {
+            var currentParent = node.Parent;
+            while (currentParent != null)
+            {
+                if (currentParent is TNode nodeToFind)
+                    return nodeToFind;
+                currentParent = currentParent.Parent;
+            }
+
+            return null;
+        }
     }
 }

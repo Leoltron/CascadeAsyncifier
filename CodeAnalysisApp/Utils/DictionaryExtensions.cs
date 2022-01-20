@@ -10,7 +10,7 @@ namespace CodeAnalysisApp.Utils
             TValue defaultValue = default) =>
             dict.TryGetValue(key, out var val) ? (TValue)val : defaultValue;
 
-        public static TValue AddOrCreate<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key)
+        public static TValue GetOrCreate<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key)
             where TValue : new()
         {
             if (!dictionary.TryGetValue(key, out var val))
@@ -20,6 +20,14 @@ namespace CodeAnalysisApp.Utils
             }
 
             return val;
+        }
+        
+        public static void AddToDictList<TList, TKey, TValue>(
+            this IDictionary<TKey, TList> dict,
+            TKey key,
+            TValue value) where TList : IList<TValue>, new()
+        {
+            dict.GetOrCreate(key).Add(value);
         }
 
         public static bool GetOrFalse<TKey>(

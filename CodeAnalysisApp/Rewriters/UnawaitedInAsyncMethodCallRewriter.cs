@@ -29,19 +29,25 @@ namespace CodeAnalysisApp.Rewriters
             if (!InAsyncMethod)
                 return base.VisitExpressionStatement(node);
 
-            var expType = ModelExtensions.GetTypeInfo(semanticModel, node.Expression).Type;
+            var nodeExpression = node.Expression;
+            var expressionType = ModelExtensions.GetTypeInfo(semanticModel, nodeExpression).Type;
             
-            var isAwaitableExpression = expType.SymbolEquals(taskSymbol) || 
-                    expType.SymbolEquals(awaitableSymbol) ||
-                    expType.OriginalDefinition.SymbolEquals(genericAwaitableSymbol) ||
-                    expType.OriginalDefinition.SymbolEquals(genericTaskSymbol);
+            var isAwaitableExpression = expressionType.SymbolEquals(taskSymbol) || 
+                    expressionType.SymbolEquals(awaitableSymbol) ||
+                    expressionType.OriginalDefinition.SymbolEquals(genericAwaitableSymbol) ||
+                    expressionType.OriginalDefinition.SymbolEquals(genericTaskSymbol);
 
             if (!isAwaitableExpression)
                 return base.VisitExpressionStatement(node);
-
-            var originalLeadTrivia = node.GetLeadingTrivia();
             
-            return base.VisitExpressionStatement(node.WithExpression(SyntaxFactory.AwaitExpression(node.Expression).NormalizeWhitespace()).WithLeadingTrivia(originalLeadTrivia));
+            var awaitExpression = SyntaxFactory.AwaitExpression(nodeExpression.WithoutLeadingTrivia())
+                .WithAwaitKeyword(
+                    SyntaxFactory.Token(
+                        nodeExpression.GetLeadingTrivia(),
+                        SyntaxKind.AwaitKeyword,
+                        SyntaxFactory.TriviaList(SyntaxFactory.Space)));
+            
+            return base.VisitExpressionStatement(node.WithExpression(awaitExpression));
         }
     }
 }

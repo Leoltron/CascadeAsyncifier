@@ -21,12 +21,6 @@ namespace CodeAnalysisApp.Rewriters
             set => CurrentContext["FoundAwaitReturn"] = value;
         }
 
-        private bool DeasyncifyChildReturn
-        {
-            get => CurrentContext.GetOrDefault("DeasyncifyChildReturn", false);
-            set => CurrentContext["DeasyncifyChildReturn"] = value;
-        }
-
         private bool DeasyncifyReturn
         {
             get => CurrentContext.GetOrDefault("DeasyncifyReturn", false);

@@ -1,27 +1,18 @@
-using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace CodeAnalysisApp.Rewriters
 {
     public class UnawaitedInAsyncMethodCallRewriter : InAsyncMethodContextRewriter
     {
-        private readonly SemanticModel semanticModel;
-        private readonly INamedTypeSymbol awaitableSymbol;
-        private readonly INamedTypeSymbol genericAwaitableSymbol;
-        private readonly INamedTypeSymbol genericTaskSymbol;
-        private readonly INamedTypeSymbol taskSymbol;
+        private readonly AwaitableChecker awaitableChecker;
 
         public UnawaitedInAsyncMethodCallRewriter(SemanticModel semanticModel)
         {
-            this.semanticModel = semanticModel;
-            taskSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(Task).FullName);
-            genericTaskSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(Task<>).FullName);
-            awaitableSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(ConfiguredTaskAwaitable).FullName);
-            genericAwaitableSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(ConfiguredTaskAwaitable<>).FullName);
+            awaitableChecker = new AwaitableChecker(semanticModel);
         }
 
         public override SyntaxNode VisitExpressionStatement(ExpressionStatementSyntax node)
@@ -29,25 +20,21 @@ namespace CodeAnalysisApp.Rewriters
             if (!InAsyncMethod)
                 return base.VisitExpressionStatement(node);
 
-            var nodeExpression = node.Expression;
-            var expressionType = ModelExtensions.GetTypeInfo(semanticModel, nodeExpression).Type;
-            
-            var isAwaitableExpression = expressionType.SymbolEquals(taskSymbol) || 
-                    expressionType.SymbolEquals(awaitableSymbol) ||
-                    expressionType.OriginalDefinition.SymbolEquals(genericAwaitableSymbol) ||
-                    expressionType.OriginalDefinition.SymbolEquals(genericTaskSymbol);
-
-            if (!isAwaitableExpression)
+            if (!awaitableChecker.IsTypeAwaitable(node.Expression))
                 return base.VisitExpressionStatement(node);
+
+            var awaitKeyword = Token(
+                node.Expression.GetLeadingTrivia(),
+                SyntaxKind.AwaitKeyword,
+                TriviaList(Space));
             
-            var awaitExpression = SyntaxFactory.AwaitExpression(nodeExpression.WithoutLeadingTrivia())
-                .WithAwaitKeyword(
-                    SyntaxFactory.Token(
-                        nodeExpression.GetLeadingTrivia(),
-                        SyntaxKind.AwaitKeyword,
-                        SyntaxFactory.TriviaList(SyntaxFactory.Space)));
-            
-            return base.VisitExpressionStatement(node.WithExpression(awaitExpression));
+            var awaitExpression =
+                AwaitExpression(node.Expression.WithoutLeadingTrivia())
+                    .WithAwaitKeyword(awaitKeyword);
+
+            var newNode = node.WithExpression(awaitExpression);
+
+            return base.VisitExpressionStatement(newNode);
         }
     }
 }

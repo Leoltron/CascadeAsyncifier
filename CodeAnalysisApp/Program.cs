@@ -61,7 +61,7 @@ namespace CodeAnalysisApp
         {
             var time = new TimeSpan[rewriterFactories.Count];
 
-            await new CascadeAsyncifier().Start(workspace);
+            //await new CascadeAsyncifier().Start(workspace);
             var solutionTraverser = new MutableSolutionTraverser(workspace);
             for (var i = 0; i < rewriterFactories.Count; i++)
             {

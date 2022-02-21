@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -12,16 +11,14 @@ namespace CodeAnalysisApp.Rewriters
     {
         private readonly SemanticModel model;
         private readonly INamedTypeSymbol attributeSymbol;
-        private readonly INamedTypeSymbol taskSymbol;
-        private readonly INamedTypeSymbol genericTaskSymbol;
+        private readonly AwaitableChecker awaitableChecker;
         private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContextAttribute";
 
         public ConfigureAwaitRewriter(SemanticModel model)
         {
             this.model = model;
             attributeSymbol = model.Compilation.GetTypeByMetadataName(ATTR_NAME);
-            taskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task).FullName);
-            genericTaskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task<>).FullName);
+            awaitableChecker = new AwaitableChecker(model);
         }
 
         private bool expectedConfigureAwaitArgument;
@@ -29,15 +26,16 @@ namespace CodeAnalysisApp.Rewriters
 
         public override SyntaxNode VisitAwaitExpression(AwaitExpressionSyntax node)
         {
-            var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, node.Expression);
-
             if (IsTaskCompletedTaskExpression(node.Expression))
             {
                 return node;
             }
+            
+            var expressionType = ModelExtensions.GetTypeInfo(model, node.Expression).Type;
 
-            if (expressionTypeInfo.Type.SymbolEquals(taskSymbol) ||
-                expressionTypeInfo.Type.OriginalDefinition.SymbolEquals( genericTaskSymbol))
+
+            if (awaitableChecker.IsTask(expressionType) ||
+                awaitableChecker.IsGenericTask(expressionType) )
             {
                 if (expectedConfigureAwaitArgument != true)
                 {
@@ -64,9 +62,9 @@ namespace CodeAnalysisApp.Rewriters
         {
             if (expressionSyntax is not MemberAccessExpressionSyntax maes)
                 return false;
-            var expressionTypeInfo = ModelExtensions.GetTypeInfo(model, maes.Expression);
+            var expressionType = ModelExtensions.GetTypeInfo(model, maes.Expression).Type;
 
-            return SymbolEqualityComparer.Default.Equals(expressionTypeInfo.Type, taskSymbol) &&
+            return awaitableChecker.IsTask(expressionType) &&
                    maes.Name.Identifier.Text == "CompletedTask";
         }
 

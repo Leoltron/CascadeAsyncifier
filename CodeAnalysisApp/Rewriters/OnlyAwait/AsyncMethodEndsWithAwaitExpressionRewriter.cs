@@ -57,45 +57,6 @@ namespace CodeAnalysisApp.Rewriters
                 m => m.WithoutAsyncModifier());
         }
 
-        // Disabled for anything except methods: async void
-        
-        /*
-        protected override SyntaxNode AfterParenthesizedLambdaExpressionVisit(
-            IDictionary<string, object> parentContext,
-            IDictionary<string, object> nodeContext,
-            SyntaxNode nodeAfterVisit) =>
-            AfterVisit<ParenthesizedLambdaExpressionSyntax>(
-                nodeContext,
-                nodeAfterVisit,
-                m => m.WithoutAsyncModifier());
-
-        protected override SyntaxNode AfterAnonymousMethodExpressionVisit(
-            IDictionary<string, object> parentContext,
-            IDictionary<string, object> nodeContext,
-            SyntaxNode nodeAfterVisit) =>
-            AfterVisit<AnonymousMethodExpressionSyntax>(
-                nodeContext,
-                nodeAfterVisit,
-                m => m.WithoutAsyncModifier());
-
-        protected override SyntaxNode AfterLocalFunctionStatementVisit(
-            IDictionary<string, object> parentContext,
-            IDictionary<string, object> nodeContext,
-            SyntaxNode nodeAfterVisit) =>
-            AfterVisit<LocalFunctionStatementSyntax>(
-                nodeContext,
-                nodeAfterVisit,
-                m => m.WithoutAsyncModifier());
-
-        protected override SyntaxNode AfterSimpleLambdaExpressionVisit(
-            IDictionary<string, object> parentContext,
-            IDictionary<string, object> nodeContext,
-            SyntaxNode nodeAfterVisit) =>
-            AfterVisit<SimpleLambdaExpressionSyntax>(
-                nodeContext,
-                nodeAfterVisit,
-                m => m.WithoutAsyncModifier());*/
-
         private static SyntaxNode AfterVisit<TNode>(
             IDictionary<string, object> nodeContext,
             SyntaxNode nodeAfterVisit,

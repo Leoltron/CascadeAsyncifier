@@ -1,7 +1,6 @@
-using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
@@ -10,23 +9,16 @@ namespace CodeAnalysisApp.Rewriters
     public class BlockingAwaitingRewriter : InAsyncMethodContextRewriter
     {
         private readonly SemanticModel semanticModel;
-        private readonly INamedTypeSymbol awaitableSymbol;
-        private readonly INamedTypeSymbol genericAwaitableSymbol;
-        private readonly INamedTypeSymbol genericTaskSymbol;
-        private readonly INamedTypeSymbol taskSymbol;
+        private readonly AwaitableChecker awaitableChecker;
 
         public BlockingAwaitingRewriter(SemanticModel semanticModel)
         {
             this.semanticModel = semanticModel;
-            taskSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(Task).FullName);
-            genericTaskSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(Task<>).FullName);
-            awaitableSymbol = semanticModel.Compilation.GetTypeByMetadataName(typeof(ConfiguredTaskAwaitable).FullName);
-            genericAwaitableSymbol =
-                semanticModel.Compilation.GetTypeByMetadataName(typeof(ConfiguredTaskAwaitable<>).FullName);
+            awaitableChecker = new AwaitableChecker(semanticModel);
         }
 
-
-        public override SyntaxNode VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+        public override SyntaxNode 
+            VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
         {
             if (!InAsyncMethod)
                 return base.VisitMemberAccessExpression(node);
@@ -34,56 +26,54 @@ namespace CodeAnalysisApp.Rewriters
             var expType = semanticModel.GetTypeInfo(node.Expression);
 
             if (node.Name.Identifier.Text == "Result" &&
-                expType.Type.OriginalDefinition.SymbolEquals(genericTaskSymbol))
-                return AwaitExpression(node.Expression).NormalizeWhitespace();
+                awaitableChecker.IsGenericTask(expType.Type))
+                return ToAwaitExpression(node.Expression, node);
 
             return base.VisitMemberAccessExpression(node);
         }
 
-        public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
+        public override SyntaxNode 
+            VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            if (!InAsyncMethod || node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
+            if (!InAsyncMethod ||
+                node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
                 return base.VisitInvocationExpression(node);
 
-
-            switch (memberAccessNode.Name.Identifier.Text)
+            var identifierText = memberAccessNode.Name.Identifier.Text;
+            var memberAccessExpression = memberAccessNode.Expression;
+            if (identifierText == "Wait")
             {
-                case "Wait":
-                {
-                    var expType = semanticModel.GetTypeInfo(memberAccessNode.Expression);
+                var expType = semanticModel.GetTypeInfo(memberAccessExpression).Type;
 
-                    if (expType.Type.SymbolEquals(taskSymbol))
-                        return AwaitExpression(memberAccessNode.Expression)
-                            .NormalizeWhitespace()
-                            .WithLeadingTrivia(node.GetLeadingTrivia());
-
-                    break;
-                }
-                case "GetResult":
-                {
-                    if (memberAccessNode.Expression is InvocationExpressionSyntax
+                if (awaitableChecker.IsTask(expType))
+                    return ToAwaitExpression(memberAccessExpression, node);
+            }
+            else if (identifierText == "GetResult")
+            {
+                if (memberAccessExpression is InvocationExpressionSyntax
                     {
                         Expression: MemberAccessExpressionSyntax innerMemberAccessNode
-                    } && innerMemberAccessNode.Name.Identifier.Text == "GetAwaiter")
-                    {
-                        var expType = semanticModel.GetTypeInfo(innerMemberAccessNode.Expression).Type;
-
-                        if (expType.SymbolEquals(awaitableSymbol) ||
-                            expType.OriginalDefinition.SymbolEquals(genericAwaitableSymbol) ||
-                            expType.OriginalDefinition.SymbolEquals(genericTaskSymbol) ||
-                            expType.SymbolEquals(taskSymbol))
-                        {
-                            return AwaitExpression(innerMemberAccessNode.Expression)
-                                .NormalizeWhitespace()
-                                .WithLeadingTrivia(node.GetLeadingTrivia());
-                        }
-                    }
-
-                    break;
+                    } &&
+                    innerMemberAccessNode.Name.Identifier.Text == "GetAwaiter" &&
+                    awaitableChecker.IsTypeAwaitable(innerMemberAccessNode.Expression))
+                {
+                    return ToAwaitExpression(innerMemberAccessNode.Expression, node);
                 }
             }
 
             return base.VisitInvocationExpression(node);
+        }
+
+        private static AwaitExpressionSyntax ToAwaitExpression(ExpressionSyntax expression, SyntaxNode nodeReplacedWithAwait)
+        {
+            var awaitKeyword = Token(
+                nodeReplacedWithAwait.GetLeadingTrivia(),
+                SyntaxKind.AwaitKeyword,
+                TriviaList(Space));
+
+            return AwaitExpression(expression.WithoutLeadingTrivia())
+                .WithAwaitKeyword(awaitKeyword)
+                .WithTrailingTrivia(nodeReplacedWithAwait.GetTrailingTrivia());
         }
     }
 }

@@ -9,12 +9,12 @@ namespace CodeAnalysisApp.Rewriters
     public class BlockingAwaitingRewriter : InAsyncMethodContextRewriter
     {
         private readonly SemanticModel semanticModel;
-        private readonly AwaitableChecker awaitableChecker;
+        private readonly AwaitableSyntaxChecker awaitableSyntaxChecker;
 
         public BlockingAwaitingRewriter(SemanticModel semanticModel)
         {
             this.semanticModel = semanticModel;
-            awaitableChecker = new AwaitableChecker(semanticModel);
+            awaitableSyntaxChecker = new AwaitableSyntaxChecker(semanticModel);
         }
 
         public override SyntaxNode 
@@ -26,7 +26,7 @@ namespace CodeAnalysisApp.Rewriters
             var expType = semanticModel.GetTypeInfo(node.Expression);
 
             if (node.Name.Identifier.Text == "Result" &&
-                awaitableChecker.IsGenericTask(expType.Type))
+                awaitableSyntaxChecker.IsGenericTask(expType.Type))
                 return ToAwaitExpression(node.Expression, node);
 
             return base.VisitMemberAccessExpression(node);
@@ -45,7 +45,7 @@ namespace CodeAnalysisApp.Rewriters
             {
                 var expType = semanticModel.GetTypeInfo(memberAccessExpression).Type;
 
-                if (awaitableChecker.IsTask(expType))
+                if (awaitableSyntaxChecker.IsTask(expType))
                     return ToAwaitExpression(memberAccessExpression, node);
             }
             else if (identifierText == "GetResult")
@@ -55,7 +55,7 @@ namespace CodeAnalysisApp.Rewriters
                         Expression: MemberAccessExpressionSyntax innerMemberAccessNode
                     } &&
                     innerMemberAccessNode.Name.Identifier.Text == "GetAwaiter" &&
-                    awaitableChecker.IsTypeAwaitable(innerMemberAccessNode.Expression))
+                    awaitableSyntaxChecker.IsTypeAwaitable(innerMemberAccessNode.Expression))
                 {
                     return ToAwaitExpression(innerMemberAccessNode.Expression, node);
                 }

@@ -5,6 +5,11 @@ namespace CodeAnalysisApp.Utils
     public static class DictionaryExtensions
     {
         public static TValue GetOrDefault<TKey, TValue>(
+            this IDictionary<TKey, TValue> dict,
+            TKey key,
+            TValue defaultValue = default) =>
+            dict.TryGetValue(key, out var val) ? val : defaultValue;
+        public static TValue GetOrDefault<TKey, TValue>(
             this IDictionary<TKey, object> dict,
             TKey key,
             TValue defaultValue = default) =>

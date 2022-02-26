@@ -8,11 +8,11 @@ namespace CodeAnalysisApp.Rewriters
 {
     public class UnawaitedInAsyncMethodCallRewriter : InAsyncMethodContextRewriter
     {
-        private readonly AwaitableChecker awaitableChecker;
+        private readonly AwaitableSyntaxChecker awaitableSyntaxChecker;
 
         public UnawaitedInAsyncMethodCallRewriter(SemanticModel semanticModel)
         {
-            awaitableChecker = new AwaitableChecker(semanticModel);
+            awaitableSyntaxChecker = new AwaitableSyntaxChecker(semanticModel);
         }
 
         public override SyntaxNode VisitExpressionStatement(ExpressionStatementSyntax node)
@@ -20,7 +20,7 @@ namespace CodeAnalysisApp.Rewriters
             if (!InAsyncMethod)
                 return base.VisitExpressionStatement(node);
 
-            if (!awaitableChecker.IsTypeAwaitable(node.Expression))
+            if (!awaitableSyntaxChecker.IsTypeAwaitable(node.Expression))
                 return base.VisitExpressionStatement(node);
 
             var awaitKeyword = Token(

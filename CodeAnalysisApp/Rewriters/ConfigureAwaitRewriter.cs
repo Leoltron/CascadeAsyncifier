@@ -11,14 +11,14 @@ namespace CodeAnalysisApp.Rewriters
     {
         private readonly SemanticModel model;
         private readonly INamedTypeSymbol attributeSymbol;
-        private readonly AwaitableChecker awaitableChecker;
+        private readonly AwaitableSyntaxChecker awaitableSyntaxChecker;
         private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContextAttribute";
 
         public ConfigureAwaitRewriter(SemanticModel model)
         {
             this.model = model;
             attributeSymbol = model.Compilation.GetTypeByMetadataName(ATTR_NAME);
-            awaitableChecker = new AwaitableChecker(model);
+            awaitableSyntaxChecker = new AwaitableSyntaxChecker(model);
         }
 
         private bool expectedConfigureAwaitArgument;
@@ -34,8 +34,8 @@ namespace CodeAnalysisApp.Rewriters
             var expressionType = ModelExtensions.GetTypeInfo(model, node.Expression).Type;
 
 
-            if (awaitableChecker.IsTask(expressionType) ||
-                awaitableChecker.IsGenericTask(expressionType) )
+            if (awaitableSyntaxChecker.IsTask(expressionType) ||
+                awaitableSyntaxChecker.IsGenericTask(expressionType) )
             {
                 if (expectedConfigureAwaitArgument != true)
                 {
@@ -64,7 +64,7 @@ namespace CodeAnalysisApp.Rewriters
                 return false;
             var expressionType = ModelExtensions.GetTypeInfo(model, maes.Expression).Type;
 
-            return awaitableChecker.IsTask(expressionType) &&
+            return awaitableSyntaxChecker.IsTask(expressionType) &&
                    maes.Name.Identifier.Text == "CompletedTask";
         }
 

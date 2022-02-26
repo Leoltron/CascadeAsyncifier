@@ -13,12 +13,23 @@ namespace CodeAnalysisApp.Helpers
 {
     public class CascadeAsyncifier
     {
-        private readonly ISyncAsyncMethodPairProvider provider = new HardcodeSyncAsyncMethodPairProvider();
         public async Task Start(Workspace workspace)
         {
             var solution = workspace.CurrentSolution;
+            var matchers = new Dictionary<ProjectId, AsyncifiableMethodsMatcher>();
+            foreach (var project in solution.Projects)
+            {
+                var matcher = new AsyncifiableMethodsMatcher(await project.GetCompilationAsync());
+                matcher.FillAsyncifiableMethodsFromCompilation();
+                matchers[project.Id] = matcher;
+            }
+            
             var docTasks = solution.Projects
-                .SelectMany(p => p.Documents.Select(document => (document, task: TraverseDocument(document))))
+                .SelectMany(p =>
+                                    {
+                                        var matcher = matchers[p.Id];
+                                        return p.Documents.Select(document => (document, task: TraverseDocument(document, matcher)));
+                                    })
                 .ToList();
 
             await Task.WhenAll(docTasks.Select(p => p.task));
@@ -87,7 +98,7 @@ namespace CodeAnalysisApp.Helpers
 
                 foreach (var method in docClassPair.Value.SelectMany(pair => classToMethods[pair]))
                 {
-                    if (provider.Provide().Any(m => m.MatchSyncMethod(method.Symbol)))
+                    if (matchers[document.Project.Id].CanBeAsyncified(method.Symbol))
                     {
                         continue;
                     }
@@ -105,7 +116,7 @@ namespace CodeAnalysisApp.Helpers
         }
 
         private static async Task<Dictionary<ClassSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(
-            Document document)
+            Document document, AsyncifiableMethodsMatcher matcher)
         {
             var classToMethods = new Dictionary<ClassDeclarationSyntax, List<MethodDeclarationSyntax>>();
 

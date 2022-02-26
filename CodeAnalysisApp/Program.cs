@@ -7,10 +7,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeAnalysisApp
 {
@@ -48,6 +50,22 @@ namespace CodeAnalysisApp
             var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
             Console.WriteLine($"Finished loading solution '{solutionPath}'");
 
+            //await FindMethods(solution);
+            /*
+            var solutionTraverser = new MutableSolutionTraverser(workspace);
+            await solutionTraverser.TraverseAsync(async d =>
+            {
+                var model = await d.GetSemanticModelAsync();
+                var root = await d.GetSyntaxRootAsync();
+                root.DescendantNodes().OfType<InvocationExpressionSyntax>().ForEach(invoc =>
+                {
+                    if (model.GetSymbolInfo(invoc).Symbol is IMethodSymbol symbol && repl.Any(r => r.SymbolEquals(symbol)))
+                        Console.WriteLine(d.Name+invoc.Span + " - "+invoc.ToString());
+                });
+            return TraverseResult.Continue;
+            });*/
+
+            
             var time = await Rewrite(workspace);
 
             Console.WriteLine("Rewriters total time:");
@@ -56,41 +74,66 @@ namespace CodeAnalysisApp
                 Console.WriteLine("\t" + rewriterFactories[i].name + ":\t " + time[i]);
             }
         }
+/*
+        private static async Task FindMethods(Solution solution)
+        {
+            foreach (var project in solution.Projects)
+            {
+                var a = await project.GetCompilationAsync();
+                if (a == null)
+                {
+                    Console.WriteLine($"Project \"{project.Name}\": no compilation found");
+                    continue;
+                }
+
+                Console.WriteLine($"Project \"{project.Name}\"");
+
+                var b = new AsyncifiableMethodsProvider(a);
+                b.Provide().ToList();
+            }
+        }*/
 
         private static async Task<TimeSpan[]> Rewrite(MSBuildWorkspace workspace)
         {
             var time = new TimeSpan[rewriterFactories.Count];
 
-            //await new CascadeAsyncifier().Start(workspace);
             var solutionTraverser = new MutableSolutionTraverser(workspace);
+            await ApplyRewriter(solutionTraverser, _ => new AsyncVoidRewriter());
+            
+            await new CascadeAsyncifier().Start(workspace);
+            
             for (var i = 0; i < rewriterFactories.Count; i++)
             {
                 var sw = Stopwatch.StartNew();
                 var rewriterAndName = rewriterFactories[i];
-                await solutionTraverser.TraverseAsync(
-                    async document =>
-                    {
-                        var root = await document.GetSyntaxRootAsync();
-                        var model = await document.GetSemanticModelAsync();
-                        var newSource = root;
-                        var rewriter = rewriterAndName.factory(model);
-                        newSource = rewriter.Visit(newSource);
-
-                        var oldText = (await document.GetSyntaxRootAsync()).GetText();
-                        var newSourceText = newSource.GetText();
-
-                        if (newSourceText.ContentEquals(oldText))
-                            return TraverseResult.Continue;
-
-                        return oldText.ToString().EqualsIgnoreWhitespace(newSourceText.ToString())
-                            ? TraverseResult.Continue
-                            : TraverseResult.Reload(document.WithSyntaxRoot(newSource));
-
-                    });
+                await ApplyRewriter(solutionTraverser, rewriterAndName.factory);
                 time[i] += sw.Elapsed;
             }
 
             return time;
+        }
+
+        private static Task ApplyRewriter(MutableSolutionTraverser slnTraverser, Func<SemanticModel, CSharpSyntaxRewriter> rewriterFactory)
+        {
+            return slnTraverser.TraverseAsync(
+                async document =>
+                {
+                    var root = await document.GetSyntaxRootAsync();
+                    var model = await document.GetSemanticModelAsync();
+                    var newSource = root;
+                    var rewriter = rewriterFactory(model);
+                    newSource = rewriter.Visit(newSource);
+
+                    var oldText = (await document.GetSyntaxRootAsync()).GetText();
+                    var newSourceText = newSource.GetText();
+
+                    if (newSourceText.ContentEquals(oldText))
+                        return TraverseResult.Continue;
+
+                    return oldText.ToString().EqualsIgnoreWhitespace(newSourceText.ToString())
+                        ? TraverseResult.Continue
+                        : TraverseResult.Reload(document.WithSyntaxRoot(newSource));
+                });
         }
 
 

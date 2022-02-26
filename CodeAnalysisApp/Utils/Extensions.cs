@@ -29,7 +29,7 @@ namespace CodeAnalysisApp.Utils
         public static bool IsAsync(this LocalFunctionStatementSyntax methodDeclarationSyntax) =>
             methodDeclarationSyntax.Modifiers.Select(m => m.Kind()).Contains(SyntaxKind.AsyncKeyword);
 
-        public static bool SymbolEquals(this ITypeSymbol one, ITypeSymbol other)
+        public static bool SymbolEquals(this ISymbol one, ISymbol other)
         {
             return SymbolEqualityComparer.Default.Equals(one, other);
         }
@@ -60,5 +60,57 @@ namespace CodeAnalysisApp.Utils
 
             return null;
         }
+
+        public static bool SequencesEqual<T>(this IEnumerable<T> one, IEnumerable<T> other, Func<T, T, bool> comparer)
+        {
+            using var oneEnumerator = one.GetEnumerator();
+            using var otherEnumerator = other.GetEnumerator();
+
+            var oneHasNext = oneEnumerator.MoveNext();
+            var otherHasNext = otherEnumerator.MoveNext();
+
+            while (oneHasNext && otherHasNext)
+            {
+                if (!comparer(oneEnumerator.Current, otherEnumerator.Current))
+                    return false;
+
+                oneHasNext = oneEnumerator.MoveNext();
+                otherHasNext = otherEnumerator.MoveNext();
+            }
+
+            return !oneHasNext && !otherHasNext;
+        }
+
+        public static (List<T> filtered, List<T> unfiltered) SplitByFilter<T>(
+            this IEnumerable<T> source, Predicate<T> filter)
+        {
+            var filtered = new List<T>();
+            var unfiltered = new List<T>();
+
+            foreach (var element in source)
+            {
+                if(filter(element))
+                    filtered.Add(element);
+                else
+                    unfiltered.Add(element);
+            }
+
+            return (filtered, unfiltered);
+        }
+
+        public static string GetFullName(this ISymbol symbol)
+        {
+            var nameParts = new List<string>();
+            while (true)
+            {
+                nameParts.Add(symbol.Name);
+                if (symbol.ContainingNamespace.IsGlobalNamespace)
+                    break;
+                symbol = symbol.ContainingNamespace;
+            }
+
+            nameParts.Reverse();
+            return string.Join(".", nameParts);
+        } 
     }
 }

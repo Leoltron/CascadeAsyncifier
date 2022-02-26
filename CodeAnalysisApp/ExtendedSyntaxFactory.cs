@@ -24,12 +24,10 @@ namespace CodeAnalysisApp
 
             return UsingDirective(nameSyntax);
         }
-        
-        internal static UsingDirectiveSyntax UsingDirective(NameSyntax nameSyntax)
-        {
-            return SyntaxFactory.UsingDirective(nameSyntax)
-                .WithUsingKeyword(Token(SyntaxKind.UsingKeyword).WithTrailingTrivia(Space))
-                .WithTrailingTrivia(LineFeed);
-        }
+
+        private static UsingDirectiveSyntax UsingDirective(NameSyntax nameSyntax) =>
+            SyntaxFactory.UsingDirective(nameSyntax)
+                         .WithUsingKeyword(Token(SyntaxKind.UsingKeyword).WithTrailingTrivia(Space))
+                         .WithTrailingTrivia(LineFeed);
     }
 }

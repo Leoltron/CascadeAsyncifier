@@ -104,9 +104,6 @@ namespace CodeAnalysisApp.Helpers
                     }
                     
                     editor.InsertAfter(method.Node, method.Node.WithAsyncSignatureAndName());
-
-                    var name = method.Symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
-                    HardcodeSyncAsyncMethodPairProvider.Pairs.Add((name,name.Replace("(", "Async(")));
                 }
                 editor.ReplaceNode(root, (n, gen) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
             }
@@ -125,7 +122,7 @@ namespace CodeAnalysisApp.Helpers
             var root = await document.GetSyntaxRootAsync();
             var model = await document.GetSemanticModelAsync();
 
-            var finder = new AsyncificationCandidateFinder(model);
+            var finder = new AsyncificationCandidateFinder(model, matcher);
             finder.CandidateFound += m =>
             {
                 /*

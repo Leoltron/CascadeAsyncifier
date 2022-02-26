@@ -11,6 +11,9 @@ namespace CodeAnalysisApp.Helpers
                 ("System.Threading.Tasks.Task", "WaitAll", "WhenAll"),
                 ("System.Threading.Tasks.Task", "WaitAny", "WhenAny"),
                 ("System.Threading.Tasks.Task", "Wait", "Delay"),
+                ("System.Net.WebClient", "DownloadData", "DownloadDataTaskAsync"),
+                ("System.Net.WebClient", "DownloadFile", "DownloadFileTaskAsync"),
+                ("System.Net.WebClient", "DownloadString", "DownloadStringTaskAsync"),
             };
         }
     }

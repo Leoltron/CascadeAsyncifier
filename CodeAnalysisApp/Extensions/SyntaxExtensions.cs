@@ -48,5 +48,16 @@ namespace CodeAnalysisApp.Extensions
 
             return null;
         }
+
+        public static TNode LeadWithLineFeedIfNotPresent<TNode>(this TNode node) where TNode : SyntaxNode
+        {
+            
+            var leadingTrivia = node.GetLeadingTrivia();
+            var trailingTrivia = node.GetTrailingTrivia();
+
+            return leadingTrivia.Concat(trailingTrivia).Count(e => e.IsKind(SyntaxKind.EndOfLineTrivia)) < 2 
+                ? node.WithLeadingTrivia(leadingTrivia.Prepend(SyntaxFactory.LineFeed)) 
+                : node;
+        }
     }
 }

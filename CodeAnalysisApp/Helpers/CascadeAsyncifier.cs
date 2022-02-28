@@ -6,6 +6,7 @@ using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -100,7 +101,7 @@ namespace CodeAnalysisApp.Helpers
                 if (!visitedMethods.Add(method) || typeSyntax == null)
                     return;
 
-                if (semanticModel!.GetDeclaredSymbol(typeSyntax) is not ITypeSymbol classSymbol)
+                if (ModelExtensions.GetDeclaredSymbol(semanticModel!, typeSyntax) is not ITypeSymbol classSymbol)
                 {
                     return;
                 }
@@ -131,8 +132,9 @@ namespace CodeAnalysisApp.Helpers
                     {
                         continue;
                     }
-                    
-                    editor.InsertAfter(method.Node, method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract));
+
+                    var asyncMethodNode = method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract);
+                    editor.InsertAfter(method.Node, asyncMethodNode.LeadWithLineFeedIfNotPresent());
                 }
                 editor.ReplaceNode(root, (n, gen) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
             }
@@ -169,9 +171,9 @@ namespace CodeAnalysisApp.Helpers
 
             return classToMethods
                 .Select(
-                    p => (new TypeSyntaxSemanticPair(p.Key, model.GetDeclaredSymbol(p.Key) as ITypeSymbol),
+                    p => (new TypeSyntaxSemanticPair(p.Key, ModelExtensions.GetDeclaredSymbol(model, p.Key) as ITypeSymbol),
                         p.Value.Select(
-                                m => new MethodSyntaxSemanticPair(m, model.GetDeclaredSymbol(m) as IMethodSymbol))
+                                m => new MethodSyntaxSemanticPair(m, ModelExtensions.GetDeclaredSymbol(model, m) as IMethodSymbol))
                             .Where(mp => mp.Symbol != null)
                             .ToList()))
                 .Where(p => p.Item1.Symbol != null && p.Item2.Any())

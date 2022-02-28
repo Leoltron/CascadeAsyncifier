@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -48,6 +49,11 @@ namespace CodeAnalysisApp.Rewriters
             }
 
             if (!matcher.CanBeAsyncified(methodSymbol))
+            {
+                return;
+            }
+
+            if (!model.GetDeclaredSymbol(CurrentMethod).WholeHierarchyChainIsInSourceCode())
             {
                 return;
             }

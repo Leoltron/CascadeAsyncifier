@@ -47,13 +47,13 @@ namespace CodeAnalysisApp
         }
     }
 
-    public class ClassSyntaxSemanticPair : SyntaxSemanticPair<ClassDeclarationSyntax, ITypeSymbol>
+    public class TypeSyntaxSemanticPair : SyntaxSemanticPair<TypeDeclarationSyntax, ITypeSymbol>
     {
-        public ClassSyntaxSemanticPair(ClassDeclarationSyntax node, ITypeSymbol symbol) : base(node, symbol)
+        public TypeSyntaxSemanticPair(TypeDeclarationSyntax node, ITypeSymbol symbol) : base(node, symbol)
         {
         }
 
-        public static implicit operator ClassSyntaxSemanticPair((ClassDeclarationSyntax, ITypeSymbol) pair) =>
+        public static implicit operator TypeSyntaxSemanticPair((TypeDeclarationSyntax, ITypeSymbol) pair) =>
             new(pair.Item1, pair.Item2);
     }
 

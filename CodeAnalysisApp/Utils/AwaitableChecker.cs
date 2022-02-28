@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Extensions;
 using Microsoft.CodeAnalysis;
 
 namespace CodeAnalysisApp.Utils

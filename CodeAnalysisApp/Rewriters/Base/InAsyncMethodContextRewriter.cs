@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 

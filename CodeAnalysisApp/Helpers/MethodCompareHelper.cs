@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 

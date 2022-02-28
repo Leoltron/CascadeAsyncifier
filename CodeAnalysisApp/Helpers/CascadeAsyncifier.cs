@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
@@ -41,51 +42,79 @@ namespace CodeAnalysisApp.Helpers
 
             var asyncifableMethodsQueue = new Queue<IMethodSymbol>(
                 docTasks.SelectMany(d => d.task.Result.Values.SelectMany(l => l.Select(mp => mp.Symbol))));
-            var visitedMethods = new HashSet<IMethodSymbol>(asyncifableMethodsQueue);
+            var visitedMethods = new HashSet<IMethodSymbol>(asyncifableMethodsQueue, SymbolEqualityComparer.Default);
 
             while (asyncifableMethodsQueue.Any())
             {
                 var methodSymbol = asyncifableMethodsQueue.Dequeue();
+
+                if (methodSymbol.IsAbstract)
+                {
+                    foreach (var method in (await SymbolFinder.FindOverridesAsync(methodSymbol, solution)).OfType<IMethodSymbol>())
+                    {
+                        await AddMethod(method);
+                    }
+                }
+                else
+                {
+                    var overridenSymbol = methodSymbol.FindOverridenOrImplementedSymbol();
+
+                    if (overridenSymbol != null)
+                    {
+                        await AddMethod(overridenSymbol);
+                    }
+                }
                 
                 var callers = await SymbolFinder.FindCallersAsync(methodSymbol, solution);
                 foreach (var callerInfo in callers.Where(f => f.IsDirect))
                 {
                     var callingSymbol = (IMethodSymbol)callerInfo.CallingSymbol;
-
-                    if (callingSymbol.MethodKind != MethodKind.Ordinary)
-                    {
-                        continue;
-                    }
-
-                    var methodSyntax =
-                        (MethodDeclarationSyntax)await callingSymbol.DeclaringSyntaxReferences.First().GetSyntaxAsync();
-
-                    if (methodSyntax.IsAsync())
-                        continue;
-
-                    var classSyntax = methodSyntax.Parent as ClassDeclarationSyntax;
-                    var document = solution.GetDocument(methodSyntax.SyntaxTree);
-
-                    if (!visitedMethods.Add(callingSymbol) || document == null || classSyntax == null)
-                        continue;
-
-                    var semanticModel = await document.GetSemanticModelAsync();
-                    if (semanticModel.GetDeclaredSymbol(classSyntax) is not ITypeSymbol classSymbol)
-                    {
-                        continue;
-                    }
-                    
-                    asyncifableMethodsQueue.Enqueue(callingSymbol);
-
-                    var classPair = new ClassSyntaxSemanticPair(classSyntax, classSymbol);
-                    var methodPair = new MethodSyntaxSemanticPair(methodSyntax, callingSymbol);
-                    if (!classToMethods.ContainsKey(classPair))
-                    {
-                        documentToClasses.AddToDictList(document, classPair);
-                    }
-
-                    classToMethods.AddToDictList(classPair, methodPair);
+                    if(callingSymbol.WholeHierarchyChainIsInSourceCode())
+                        await AddMethod(callingSymbol);
                 }
+            }
+
+
+            async Task AddMethod(IMethodSymbol method)
+            {
+                if (method.MethodKind != MethodKind.Ordinary)
+                {
+                    return;
+                }
+
+                var methodSyntax =
+                    (MethodDeclarationSyntax)await method.DeclaringSyntaxReferences.First().GetSyntaxAsync();
+
+                var typeSyntax = methodSyntax.Parent as TypeDeclarationSyntax;;
+                var document = solution.GetDocument(methodSyntax.SyntaxTree);
+                if(document == null)
+                    return;
+
+                var semanticModel = await document.GetSemanticModelAsync();
+
+                var awaitChecker = new AwaitableSyntaxChecker(semanticModel);
+
+                if (methodSyntax.IsAsync() || awaitChecker.IsTypeAwaitable(methodSyntax.ReturnType))
+                    return;
+
+                if (!visitedMethods.Add(method) || typeSyntax == null)
+                    return;
+
+                if (semanticModel!.GetDeclaredSymbol(typeSyntax) is not ITypeSymbol classSymbol)
+                {
+                    return;
+                }
+                    
+                asyncifableMethodsQueue.Enqueue(method);
+
+                var classPair = new TypeSyntaxSemanticPair(typeSyntax, classSymbol);
+                var methodPair = new MethodSyntaxSemanticPair(methodSyntax, method);
+                if (!classToMethods.ContainsKey(classPair))
+                {
+                    documentToClasses.AddToDictList(document, classPair);
+                }
+
+                classToMethods.AddToDictList(classPair, methodPair);
             }
             
             var slnEditor = new SolutionEditor(workspace.CurrentSolution);
@@ -103,7 +132,7 @@ namespace CodeAnalysisApp.Helpers
                         continue;
                     }
                     
-                    editor.InsertAfter(method.Node, method.Node.WithAsyncSignatureAndName());
+                    editor.InsertAfter(method.Node, method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract));
                 }
                 editor.ReplaceNode(root, (n, gen) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
             }
@@ -112,7 +141,7 @@ namespace CodeAnalysisApp.Helpers
 
         }
 
-        private static async Task<Dictionary<ClassSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(
+        private static async Task<Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(
             Document document, AsyncifiableMethodsMatcher matcher)
         {
             var classToMethods = new Dictionary<ClassDeclarationSyntax, List<MethodDeclarationSyntax>>();
@@ -140,7 +169,7 @@ namespace CodeAnalysisApp.Helpers
 
             return classToMethods
                 .Select(
-                    p => (new ClassSyntaxSemanticPair(p.Key, model.GetDeclaredSymbol(p.Key) as ITypeSymbol),
+                    p => (new TypeSyntaxSemanticPair(p.Key, model.GetDeclaredSymbol(p.Key) as ITypeSymbol),
                         p.Value.Select(
                                 m => new MethodSyntaxSemanticPair(m, model.GetDeclaredSymbol(m) as IMethodSymbol))
                             .Where(mp => mp.Symbol != null)

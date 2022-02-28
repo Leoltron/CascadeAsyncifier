@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;

@@ -1,4 +1,5 @@
 using System.Linq;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -9,12 +10,17 @@ namespace CodeAnalysisApp
 {
     public static class MethodSignatureExtensions
     {
-        public static MethodDeclarationSyntax WithAsyncSignatureAndName(this MethodDeclarationSyntax methodDeclaration)
+        public static MethodDeclarationSyntax WithAsyncSignatureAndName(this MethodDeclarationSyntax methodDeclaration,
+                                                                        bool addAsyncKeyword = true)
         {
-            return methodDeclaration
-                .WithIdentifier(Identifier(methodDeclaration.Identifier.Text + "Async"))
-                .AddAsyncModifier()
-                .WithReturnType(AsyncifyReturnType(methodDeclaration));
+            var asyncMethod = methodDeclaration
+               .WithIdentifier(Identifier(methodDeclaration.Identifier.Text + "Async"));
+
+            if (addAsyncKeyword)
+                asyncMethod = asyncMethod.AddAsyncModifier();
+
+            return asyncMethod
+               .WithReturnType(AsyncifyReturnType(methodDeclaration));
         }
 
         private static TypeSyntax AsyncifyReturnType(MethodDeclarationSyntax node)
@@ -25,14 +31,14 @@ namespace CodeAnalysisApp
                 return IdentifierName("Task").WithTriviaFrom(returnType);
             
             return GenericName(Identifier("Task"))
-                .WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(returnType.WithoutTrailingTrivia())))
+                .WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(returnType.WithoutTrivia())))
                 .WithTriviaFrom(returnType);
         }
         
         public static MethodDeclarationSyntax WithoutAsyncModifier(this MethodDeclarationSyntax methodDeclaration)
         {
             var asyncModifier =
-                methodDeclaration.Modifiers.FirstOrDefault(m => m.Kind() == SyntaxKind.AsyncKeyword);
+                methodDeclaration.Modifiers.FirstOrDefault(m => m.IsKind(SyntaxKind.AsyncKeyword));
 
             return asyncModifier == default
                 ? methodDeclaration
@@ -51,7 +57,7 @@ namespace CodeAnalysisApp
         public static LocalFunctionStatementSyntax WithoutAsyncModifier(this LocalFunctionStatementSyntax methodDeclaration)
         {
             var asyncModifier =
-                methodDeclaration.Modifiers.FirstOrDefault(m => m.Kind() == SyntaxKind.AsyncKeyword);
+                methodDeclaration.Modifiers.FirstOrDefault(m => m.IsKind(SyntaxKind.AsyncKeyword));
 
             return asyncModifier == default
                 ? methodDeclaration

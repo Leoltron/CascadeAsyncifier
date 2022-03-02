@@ -10,6 +10,14 @@ namespace CodeAnalysisApp.Rewriters
 {
     public class OnlyAwaitInReturnAsyncMethodRewriter : InAsyncMethodContextRewriter
     {
+        private readonly SemanticModel model;
+
+        public OnlyAwaitInReturnAsyncMethodRewriter(SemanticModel model)
+        {
+            this.model = model;
+        }
+
+
         private bool InvalidForRefactoring
         {
             get => CurrentContext.GetOrDefault("InvalidForRefactoring", false);
@@ -53,7 +61,7 @@ namespace CodeAnalysisApp.Rewriters
 
         public override SyntaxNode VisitAwaitExpression(AwaitExpressionSyntax node)
         {
-            if (node.Parent is not ReturnStatementSyntax)
+            if (node.Parent is not ReturnStatementSyntax || CurrentMethod != null && !GetCurrentMethodReturnType(model).SymbolEquals(model.GetTypeInfo(node.Expression).Type))
                 InvalidForRefactoring = true;
 
             return base.VisitAwaitExpression(node);
@@ -65,7 +73,7 @@ namespace CodeAnalysisApp.Rewriters
             {
                 return VisitAndDeasyncifyReturn(node);
             }
-
+            
             var baseVisitedReturn = base.VisitReturnStatement(node);
 
             if (!InAsyncMethod || InvalidForRefactoring || !node.ChildNodes().Any())

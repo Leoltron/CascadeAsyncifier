@@ -2,19 +2,21 @@ using System;
 using System.Collections.Generic;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
+using CodeAnalysisApp.Rewriters;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace CodeAnalysisApp.Rewriters
+namespace CodeAnalysisApp.Visitors
 {
     public class AsyncificationCandidateFinder : InAsyncMethodContextWalker
     {
         public event Action<MethodDeclarationSyntax> CandidateFound;
+        public event Action<MethodDeclarationSyntax> CandidateBlacklisted;
         
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
-        private readonly HashSet<MethodDeclarationSyntax> foundCandidates = new();
+        private readonly HashSet<MethodDeclarationSyntax> ignoredCandidates = new();
 
         public AsyncificationCandidateFinder(
             SemanticModel model,
@@ -22,11 +24,6 @@ namespace CodeAnalysisApp.Rewriters
         {
             this.model = model;
             this.matcher = matcher;
-        }
-
-        public void ResetCandidatesCache()
-        {
-            foundCandidates.Clear();
         }
 
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
@@ -38,7 +35,7 @@ namespace CodeAnalysisApp.Rewriters
                 return;
             }
 
-            if (CurrentMethod == null || foundCandidates.Contains(CurrentMethod))
+            if (CurrentMethod == null || ignoredCandidates.Contains(CurrentMethod))
             {
                 return;
             }
@@ -59,7 +56,18 @@ namespace CodeAnalysisApp.Rewriters
             }
 
             CandidateFound?.Invoke(CurrentMethod);
-            foundCandidates.Add(CurrentMethod);
+            ignoredCandidates.Add(CurrentMethod);
+        }
+
+        public override void VisitYieldStatement(YieldStatementSyntax node)
+        {
+            if (CurrentMethod == null)
+            {
+                return;
+            }
+            
+            CandidateBlacklisted?.Invoke(CurrentMethod);
+            base.VisitYieldStatement(node);
         }
     }
 }

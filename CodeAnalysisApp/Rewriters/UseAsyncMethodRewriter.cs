@@ -1,10 +1,10 @@
+using System;
 using System.Collections.Concurrent;
-using System.Linq;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
-using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace CodeAnalysisApp.Rewriters
 {
@@ -30,27 +30,36 @@ namespace CodeAnalysisApp.Rewriters
         {
             var visitedNode = (InvocationExpressionSyntax)base.VisitInvocationExpression(node);
 
-            if (!InAsyncMethod)
+            if (!InAsyncMethod || visitedNode == null)
                 return visitedNode;
 
-            if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol symbol)
+            if (ModelExtensions.GetSymbolInfo(model, node).Symbol is not IMethodSymbol symbol)
                 return visitedNode;
 
             if (!matcher.TryGetAsyncMethod(symbol, out var matchingMethod))
                 return visitedNode;
 
-            var expression = (MemberAccessExpressionSyntax)visitedNode.Expression;
-            var newExpression = expression.WithName(
-                SyntaxFactory.IdentifierName(matchingMethod.Name));
+            var newName = SyntaxFactory.IdentifierName(matchingMethod.Name);
 
-            var awaitExpression = SyntaxFactory.AwaitExpression(newExpression.WithoutLeadingTrivia())
-                .WithAwaitKeyword(
-                    SyntaxFactory.Token(
-                        visitedNode.GetLeadingTrivia(),
-                        SyntaxKind.AwaitKeyword,
-                        SyntaxFactory.TriviaList(SyntaxFactory.Space)));
+            ExpressionSyntax nodeWithAwaitExpression;
+            switch (node.Expression)
+            {
+                case IdentifierNameSyntax:
+                    nodeWithAwaitExpression = SyntaxNodesExtensions.ToAwaitExpression(
+                        visitedNode.WithExpression(newName),
+                        visitedNode);
 
-            var nodeWithAwaitExpression = visitedNode.WithExpression(awaitExpression);
+                    break;
+                case MemberAccessExpressionSyntax expression:
+                {
+                    var awaitExpression = SyntaxNodesExtensions.ToAwaitExpression(expression.WithName(newName), visitedNode);
+                    nodeWithAwaitExpression = visitedNode.WithExpression(awaitExpression);
+
+                    break;
+                }
+                default:
+                    throw new ArgumentException();
+            }
 
             if (visitedNode.Parent is not MemberAccessExpressionSyntax)
                 return nodeWithAwaitExpression;

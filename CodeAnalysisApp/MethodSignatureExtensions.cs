@@ -1,6 +1,5 @@
 using System.Linq;
 using CodeAnalysisApp.Extensions;
-using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;

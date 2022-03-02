@@ -3,10 +3,11 @@ using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace CodeAnalysisApp.Extensions
 {
-    public static class SyntaxExtensions
+    public static class SyntaxNodesExtensions
     {
         public static bool HasAttribute(this MemberDeclarationSyntax node, SemanticModel model, ISymbol attributeSymbol)
         {
@@ -56,8 +57,20 @@ namespace CodeAnalysisApp.Extensions
             var trailingTrivia = node.GetTrailingTrivia();
 
             return leadingTrivia.Concat(trailingTrivia).Count(e => e.IsKind(SyntaxKind.EndOfLineTrivia)) < 2 
-                ? node.WithLeadingTrivia(leadingTrivia.Prepend(SyntaxFactory.LineFeed)) 
+                ? node.WithLeadingTrivia(leadingTrivia.Prepend(LineFeed)) 
                 : node;
+        }
+        
+        public static AwaitExpressionSyntax ToAwaitExpression(ExpressionSyntax expression, SyntaxNode nodeReplacedWithAwait)
+        {
+            var awaitKeyword = Token(
+                nodeReplacedWithAwait.GetLeadingTrivia(),
+                SyntaxKind.AwaitKeyword,
+                TriviaList(Space));
+
+            return AwaitExpression(expression.WithoutLeadingTrivia())
+                .WithAwaitKeyword(awaitKeyword)
+                .WithTrailingTrivia(nodeReplacedWithAwait.GetTrailingTrivia());
         }
     }
 }

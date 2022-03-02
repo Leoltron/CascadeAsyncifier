@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeAnalysisApp.Rewriters
@@ -13,12 +15,31 @@ namespace CodeAnalysisApp.Rewriters
             private set => CurrentContext["InAsyncMethod"] = value;
         }
 
+        protected CSharpSyntaxNode CurrentMethod
+        {
+            get => CurrentContext.GetOrDefault("CurrentMethod", (CSharpSyntaxNode) null);
+            private set => CurrentContext["CurrentMethod"] = value;
+        }
+
+        protected ITypeSymbol GetCurrentMethodReturnType(SemanticModel model)
+        {
+            var currentMethod = CurrentMethod;
+
+            if (currentMethod == null)
+                return null;
+
+            var methodSymbol = model.GetDeclaredSymbol(currentMethod) as IMethodSymbol ?? (IMethodSymbol) model.GetSymbolInfo(currentMethod).Symbol;
+
+            return methodSymbol!.ReturnType;
+        }
+
         protected override void BeforeSimpleLambdaExpressionVisit(
             IDictionary<string, object> parentContext,
             IDictionary<string, object> nodeContext,
             SimpleLambdaExpressionSyntax node)
         {
             InAsyncMethod = !node.AsyncKeyword.IsEmpty();
+            CurrentMethod = node;
         }
 
         protected override void BeforeParenthesizedLambdaExpressionVisit(
@@ -27,6 +48,7 @@ namespace CodeAnalysisApp.Rewriters
             ParenthesizedLambdaExpressionSyntax node)
         {
             InAsyncMethod = !node.AsyncKeyword.IsEmpty();
+            CurrentMethod = node;
         }
 
         protected override void BeforeAnonymousMethodExpressionVisit(
@@ -35,11 +57,13 @@ namespace CodeAnalysisApp.Rewriters
             AnonymousMethodExpressionSyntax node)
         {
             InAsyncMethod = !node.AsyncKeyword.IsEmpty();
+            CurrentMethod = node;
         }
 
         protected override void BeforeMethodDeclarationVisit(IDictionary<string, object> parentContext, IDictionary<string, object> nodeContext, MethodDeclarationSyntax node)
         {
             InAsyncMethod = node.IsAsync();
+            CurrentMethod = node;
         }
 
         protected override void BeforeLocalFunctionStatementVisit(
@@ -48,6 +72,7 @@ namespace CodeAnalysisApp.Rewriters
             LocalFunctionStatementSyntax node)
         {
             InAsyncMethod = node.IsAsync();
+            CurrentMethod = node;
         }
     }
 }

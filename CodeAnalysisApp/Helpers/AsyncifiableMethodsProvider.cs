@@ -36,7 +36,7 @@ namespace CodeAnalysisApp.Helpers
             
             var pairs = new List<string>();
             var members = typeSymbol.GetMembers().OfType<IMethodSymbol>().ToList();
-            var (asyncMembers, syncMembers) = members.SplitByFilter(m => m.Name.EndsWith("Async"));
+            var (asyncMembers, syncMembers) = members.SplitByFilter(m => m.IsAsync || m.Name.EndsWith("Async"));
             foreach (var member in syncMembers)
             {
                 if (syncAsyncMethodPairs.TryGetValue(member.Name, out var asyncName))
@@ -53,9 +53,10 @@ namespace CodeAnalysisApp.Helpers
                     } 
                     continue;
                 }
-                
+
+                var matchingAsyncName = member.Name + "Async";
                 var matchingAsyncMethod = asyncMembers
-                                         .Where(am => am.Name == member.Name + "Async")
+                                         .Where(am => am.Name == matchingAsyncName)
                                          .FirstOrDefault(a => methodCompareHelper.IsAsyncVersionOf(member, a));
 
                 if (matchingAsyncMethod != null)

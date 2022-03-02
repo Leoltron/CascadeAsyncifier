@@ -7,12 +7,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeAnalysisApp
 {
@@ -27,8 +25,8 @@ namespace CodeAnalysisApp
                     (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
                     (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
                     (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
-                    (_ => new OnlyAwaitInReturnAsyncMethodRewriter(), "Only one await in return"),
-                    (_ => new OnlyAwaitInAsyncLambdaRewriter(), "One statement in lambda"),
+                    (m => new OnlyAwaitInReturnAsyncMethodRewriter(m), "Only one await in return"),
+                    (m => new OnlyAwaitInAsyncLambdaRewriter(m), "One statement in lambda"),
                     (m => new AsyncMethodEndsWithAwaitExpressionRewriter(m), "Only one await at the end of method"),
                 };
 
@@ -50,22 +48,6 @@ namespace CodeAnalysisApp
             var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
             Console.WriteLine($"Finished loading solution '{solutionPath}'");
 
-            //await FindMethods(solution);
-            /*
-            var solutionTraverser = new MutableSolutionTraverser(workspace);
-            await solutionTraverser.TraverseAsync(async d =>
-            {
-                var model = await d.GetSemanticModelAsync();
-                var root = await d.GetSyntaxRootAsync();
-                root.DescendantNodes().OfType<InvocationExpressionSyntax>().ForEach(invoc =>
-                {
-                    if (model.GetSymbolInfo(invoc).Symbol is IMethodSymbol symbol && repl.Any(r => r.SymbolEquals(symbol)))
-                        Console.WriteLine(d.Name+invoc.Span + " - "+invoc.ToString());
-                });
-            return TraverseResult.Continue;
-            });*/
-
-            
             var time = await Rewrite(workspace);
 
             Console.WriteLine("Rewriters total time:");
@@ -74,30 +56,26 @@ namespace CodeAnalysisApp
                 Console.WriteLine("\t" + rewriterFactories[i].name + ":\t " + time[i]);
             }
         }
-/*
-        private static async Task FindMethods(Solution solution)
-        {
-            foreach (var project in solution.Projects)
-            {
-                var a = await project.GetCompilationAsync();
-                if (a == null)
-                {
-                    Console.WriteLine($"Project \"{project.Name}\": no compilation found");
-                    continue;
-                }
 
-                Console.WriteLine($"Project \"{project.Name}\"");
 
-                var b = new AsyncifiableMethodsProvider(a);
-                b.Provide().ToList();
-            }
-        }*/
+        private static string CurrentTraverserName = "";
+        private static int CurrentProgress = 0;
 
         private static async Task<TimeSpan[]> Rewrite(MSBuildWorkspace workspace)
         {
             var time = new TimeSpan[rewriterFactories.Count];
 
+            CurrentTraverserName = "Initial async void";
             var solutionTraverser = new MutableSolutionTraverser(workspace);
+            solutionTraverser.ReportProgress += (i, total) =>
+            {
+                CurrentProgress = Math.Max(i, CurrentProgress);
+                Console.Write($"\r[{CurrentTraverserName}] {(double)CurrentProgress/total:P} ");
+                if (CurrentProgress == total)
+                {
+                    Console.WriteLine("Done.");
+                }
+            };
             await ApplyRewriter(solutionTraverser, _ => new AsyncVoidRewriter());
             
             await new CascadeAsyncifier().Start(workspace);
@@ -105,8 +83,10 @@ namespace CodeAnalysisApp
             for (var i = 0; i < rewriterFactories.Count; i++)
             {
                 var sw = Stopwatch.StartNew();
-                var rewriterAndName = rewriterFactories[i];
-                await ApplyRewriter(solutionTraverser, rewriterAndName.factory);
+                var (factory, name) = rewriterFactories[i];
+                CurrentTraverserName = name;
+                CurrentProgress = 0;
+                await ApplyRewriter(solutionTraverser, factory);
                 time[i] += sw.Elapsed;
             }
 
@@ -165,8 +145,6 @@ namespace CodeAnalysisApp
                 Console.WriteLine($"    Version: {visualStudioInstances[i].Version}");
                 Console.WriteLine($"    MSBuild Path: {visualStudioInstances[i].MSBuildPath}");
             }
-
-            return visualStudioInstances.First();
 
             while (true)
             {

@@ -47,9 +47,9 @@ namespace CodeAnalysisApp.Rewriters
 
         protected override SyntaxNode AfterMethodDeclarationVisit(IDictionary<string, object> parentContext, IDictionary<string, object> nodeContext, SyntaxNode nodeAfterVisit)
         {
-            var returnType = model.GetDeclaredSymbol(nodeAfterVisit);
+            var nodeAfterVisitSymbol = model.GetDeclaredSymbol(nodeAfterVisit);
 
-            if (returnType is not IMethodSymbol ms || !ms.ReturnType.SymbolEquals(taskSymbol))
+            if (nodeAfterVisitSymbol is not IMethodSymbol methodSymbol || !methodSymbol.ReturnType.SymbolEquals(taskSymbol))
                 return nodeAfterVisit;
             
             return AfterVisit<MethodDeclarationSyntax>(
@@ -58,7 +58,7 @@ namespace CodeAnalysisApp.Rewriters
                 m => m.WithoutAsyncModifier());
         }
 
-        private static SyntaxNode AfterVisit<TNode>(
+        private SyntaxNode AfterVisit<TNode>(
             IDictionary<string, object> nodeContext,
             SyntaxNode nodeAfterVisit,
             Func<TNode, TNode> removeAsyncModifier) where TNode : SyntaxNode
@@ -82,6 +82,9 @@ namespace CodeAnalysisApp.Rewriters
                 return nodeAfterVisit;
 
             if (expressionSyntax.Expression is not AwaitExpressionSyntax awaitExpressionSyntax)
+                return nodeAfterVisit;
+            
+            if(!GetCurrentMethodReturnType(model).SymbolEquals(model.GetTypeInfo(awaitExpressionSyntax).Type))
                 return nodeAfterVisit;
 
             var nodeWithReturn = tNode.ReplaceNode(

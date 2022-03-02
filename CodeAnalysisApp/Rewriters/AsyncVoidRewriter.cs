@@ -1,11 +1,9 @@
-using System.Linq;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using static CodeAnalysisApp.ExtendedSyntaxFactory;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace CodeAnalysisApp.Rewriters
@@ -42,6 +40,6 @@ namespace CodeAnalysisApp.Rewriters
         private static bool ContainsAsyncVoid(MethodDeclarationSyntax node) =>
             node.IsAsync() &&
             node.ReturnType is PredefinedTypeSyntax predefinedTypeSyntax &&
-            predefinedTypeSyntax.Keyword.Kind() == SyntaxKind.VoidKeyword;
+            predefinedTypeSyntax.Keyword.IsKind(SyntaxKind.VoidKeyword);
     }
 }

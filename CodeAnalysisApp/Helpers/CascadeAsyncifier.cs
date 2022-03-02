@@ -1,12 +1,12 @@
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Extensions;
-using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
-using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
+using CodeAnalysisApp.Visitors;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -15,8 +15,13 @@ namespace CodeAnalysisApp.Helpers
 {
     public class CascadeAsyncifier
     {
+        private readonly ConcurrentDictionary<IMethodSymbol, bool> blacklistedMethods = new(SymbolEqualityComparer.Default);
+        
         public async Task Start(Workspace workspace)
         {
+            Console.WriteLine("Asyncifiaction started");
+            Console.Write("Collecting initial methods with async overload... ");
+            
             var solution = workspace.CurrentSolution;
             var matchers = new Dictionary<ProjectId, AsyncifiableMethodsMatcher>();
             foreach (var project in solution.Projects)
@@ -26,6 +31,8 @@ namespace CodeAnalysisApp.Helpers
                 matchers[project.Id] = matcher;
             }
             
+            Console.WriteLine("Done.");
+            
             var docTasks = solution.Projects
                 .SelectMany(p =>
                                     {
@@ -33,8 +40,14 @@ namespace CodeAnalysisApp.Helpers
                                         return p.Documents.Select(document => (document, task: TraverseDocument(document, matcher)));
                                     })
                 .ToList();
+            
+            
+            Console.WriteLine("Total documents: "+docTasks.Count);
+            Console.Write("Collecting initial asyncifiable methods... ");
 
             await Task.WhenAll(docTasks.Select(p => p.task));
+            Console.WriteLine("Done.");
+            Console.Write("Looking for asyncifiable methods through initial asyncifiable methods usage and hierarchy... ");
 
             var documentToClasses = docTasks.ToDictionary(
                 docTask => docTask.document,
@@ -67,9 +80,8 @@ namespace CodeAnalysisApp.Helpers
                 }
                 
                 var callers = await SymbolFinder.FindCallersAsync(methodSymbol, solution);
-                foreach (var callerInfo in callers.Where(f => f.IsDirect))
+                foreach (var callingSymbol in callers.Where(f => f.IsDirect).Select(c => c.CallingSymbol).OfType<IMethodSymbol>())
                 {
-                    var callingSymbol = (IMethodSymbol)callerInfo.CallingSymbol;
                     if(callingSymbol.WholeHierarchyChainIsInSourceCode())
                         await AddMethod(callingSymbol);
                 }
@@ -79,6 +91,11 @@ namespace CodeAnalysisApp.Helpers
             async Task AddMethod(IMethodSymbol method)
             {
                 if (method.MethodKind != MethodKind.Ordinary)
+                {
+                    return;
+                }
+
+                if (blacklistedMethods.ContainsKey(method))
                 {
                     return;
                 }
@@ -101,7 +118,7 @@ namespace CodeAnalysisApp.Helpers
                 if (!visitedMethods.Add(method) || typeSyntax == null)
                     return;
 
-                if (ModelExtensions.GetDeclaredSymbol(semanticModel!, typeSyntax) is not ITypeSymbol classSymbol)
+                if (semanticModel!.GetDeclaredSymbol(typeSyntax) is not ITypeSymbol classSymbol)
                 {
                     return;
                 }
@@ -117,11 +134,27 @@ namespace CodeAnalysisApp.Helpers
 
                 classToMethods.AddToDictList(classPair, methodPair);
             }
+            Console.WriteLine("Done.");
+
             
-            var slnEditor = new SolutionEditor(workspace.CurrentSolution);
             var docClassPairs = documentToClasses.Where(v => v.Value.Any()).ToList();
+            var totalClasses = classToMethods.Count(c => c.Value.Any());
+            
+            var totalMethods = classToMethods.Sum(d => d.Value.Count);
+            var methodsIndex = 0;
+            
+            Console.WriteLine($"Total of {docClassPairs.Count} docs, {totalClasses} types and {totalMethods} methods");
+            
+            if(totalMethods == 0)
+                return;
+            
+            Console.WriteLine("Duplicating and asyncifing signature of methods... ");
+
+            var slnEditor = new SolutionEditor(workspace.CurrentSolution);
             foreach (var docClassPair in docClassPairs)
             {
+                Console.Write($"\r{(double)methodsIndex/totalMethods:P} ");
+                methodsIndex++;
                 var document = docClassPair.Key;
                 var editor = await slnEditor.GetDocumentEditorAsync(document.Id);
                 var root = await document.GetSyntaxRootAsync();
@@ -140,10 +173,11 @@ namespace CodeAnalysisApp.Helpers
             }
 
             workspace.TryApplyChanges(slnEditor.GetChangedSolution());
+            Console.WriteLine($"\r{(1):P} Done.");
 
         }
 
-        private static async Task<Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(
+        private async Task<Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(
             Document document, AsyncifiableMethodsMatcher matcher)
         {
             var classToMethods = new Dictionary<ClassDeclarationSyntax, List<MethodDeclarationSyntax>>();
@@ -152,6 +186,9 @@ namespace CodeAnalysisApp.Helpers
 
             var root = await document.GetSyntaxRootAsync();
             var model = await document.GetSemanticModelAsync();
+
+            if (model == null)
+                throw new ArgumentNullException(nameof(model));
 
             var finder = new AsyncificationCandidateFinder(model, matcher);
             finder.CandidateFound += m =>
@@ -166,14 +203,24 @@ namespace CodeAnalysisApp.Helpers
                 if (visitedMethods.Add(m))
                     classToMethods.AddToDictList(@class, m);
             };
+            finder.CandidateBlacklisted += m =>
+            {
+                blacklistedMethods.TryAdd((IMethodSymbol) model.GetDeclaredSymbol(m), true);
+                if (m.Parent is not ClassDeclarationSyntax @class)
+                    return;
+                
+                if (!visitedMethods.Add(m) && classToMethods.ContainsKey(@class))
+                    classToMethods[@class].Remove(m);
+
+            };
 
             finder.Visit(root);
 
             return classToMethods
                 .Select(
-                    p => (new TypeSyntaxSemanticPair(p.Key, ModelExtensions.GetDeclaredSymbol(model, p.Key) as ITypeSymbol),
+                    p => (new TypeSyntaxSemanticPair(p.Key, model.GetDeclaredSymbol(p.Key) as ITypeSymbol),
                         p.Value.Select(
-                                m => new MethodSyntaxSemanticPair(m, ModelExtensions.GetDeclaredSymbol(model, m) as IMethodSymbol))
+                                m => new MethodSyntaxSemanticPair(m, model.GetDeclaredSymbol(m) as IMethodSymbol))
                             .Where(mp => mp.Symbol != null)
                             .ToList()))
                 .Where(p => p.Item1.Symbol != null && p.Item2.Any())

@@ -1,8 +1,7 @@
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace CodeAnalysisApp.Rewriters
 {
@@ -27,7 +26,7 @@ namespace CodeAnalysisApp.Rewriters
 
             if (node.Name.Identifier.Text == "Result" &&
                 awaitableSyntaxChecker.IsGenericTask(expType.Type))
-                return ToAwaitExpression(node.Expression, node);
+                return SyntaxNodesExtensions.ToAwaitExpression(node.Expression, node);
 
             return base.VisitMemberAccessExpression(node);
         }
@@ -46,7 +45,7 @@ namespace CodeAnalysisApp.Rewriters
                 var expType = semanticModel.GetTypeInfo(memberAccessExpression).Type;
 
                 if (awaitableSyntaxChecker.IsTask(expType))
-                    return ToAwaitExpression(memberAccessExpression, node);
+                    return SyntaxNodesExtensions.ToAwaitExpression(memberAccessExpression, node);
             }
             else if (identifierText == "GetResult")
             {
@@ -57,23 +56,11 @@ namespace CodeAnalysisApp.Rewriters
                     innerMemberAccessNode.Name.Identifier.Text == "GetAwaiter" &&
                     awaitableSyntaxChecker.IsTypeAwaitable(innerMemberAccessNode.Expression))
                 {
-                    return ToAwaitExpression(innerMemberAccessNode.Expression, node);
+                    return SyntaxNodesExtensions.ToAwaitExpression(innerMemberAccessNode.Expression, node);
                 }
             }
 
             return base.VisitInvocationExpression(node);
-        }
-
-        private static AwaitExpressionSyntax ToAwaitExpression(ExpressionSyntax expression, SyntaxNode nodeReplacedWithAwait)
-        {
-            var awaitKeyword = Token(
-                nodeReplacedWithAwait.GetLeadingTrivia(),
-                SyntaxKind.AwaitKeyword,
-                TriviaList(Space));
-
-            return AwaitExpression(expression.WithoutLeadingTrivia())
-                .WithAwaitKeyword(awaitKeyword)
-                .WithTrailingTrivia(nodeReplacedWithAwait.GetTrailingTrivia());
         }
     }
 }

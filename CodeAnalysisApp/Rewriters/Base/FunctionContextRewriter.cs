@@ -182,11 +182,11 @@ namespace CodeAnalysisApp.Rewriters
                 CurrentContext = new Dictionary<string, object>();
                 BeforeVisit(parentContext, CurrentContext, node);
                 beforeVisit(parentContext, CurrentContext, node);
-                var nodeFirstLine = node.ToString().Split(new[] { '\n' }, 2)[0];
-                var messagePrefix = revisits > 0 ? $"[Revisit #{revisits}] " : string.Empty;
-                Console.WriteLine($"{messagePrefix}Going into {nodeFirstLine}\n\t Context: {SerializeContext(CurrentContext)}\n\t ParentContext: {SerializeContext(parentContext)}");
+                //var nodeFirstLine = node.ToString().Split(new[] { '\n' }, 2)[0];
+                //var messagePrefix = revisits > 0 ? $"[Revisit #{revisits}] " : string.Empty;
+                //Console.WriteLine($"{messagePrefix}Going into {nodeFirstLine}\n\t Context: {SerializeContext(CurrentContext)}\n\t ParentContext: {SerializeContext(parentContext)}");
                 var newNode = visit(node);
-                Console.WriteLine($"{messagePrefix}Returned from {nodeFirstLine}\n\t Context: {SerializeContext(CurrentContext)}\n");
+                //Console.WriteLine($"{messagePrefix}Returned from {nodeFirstLine}\n\t Context: {SerializeContext(CurrentContext)}\n");
                 newNode = afterVisit(parentContext, CurrentContext, newNode);
                 var newSyntaxNode = AfterVisit(parentContext, CurrentContext, newNode);
 

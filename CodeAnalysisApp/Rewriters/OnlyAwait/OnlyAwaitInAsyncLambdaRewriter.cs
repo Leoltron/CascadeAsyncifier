@@ -1,8 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using CodeAnalysisApp.Extensions;
-using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -10,6 +7,13 @@ namespace CodeAnalysisApp.Rewriters
 {
     public class OnlyAwaitInAsyncLambdaRewriter : InAsyncMethodContextRewriter
     {
+        private readonly SemanticModel model;
+
+        public OnlyAwaitInAsyncLambdaRewriter(SemanticModel model)
+        {
+            this.model = model;
+        }
+
         protected override SyntaxNode VisitMethodDeclarationWithContext(MethodDeclarationSyntax node)
         {
             var lastNode = node.ChildNodes().LastOrDefault();
@@ -57,7 +61,8 @@ namespace CodeAnalysisApp.Rewriters
             TNode arrowExpression,
             out TNode expression) where  TNode : SyntaxNode
         {
-            if (arrowExpression.ChildNodes().Last() is not AwaitExpressionSyntax awaitExpression)
+            if (arrowExpression.ChildNodes().Last() is not AwaitExpressionSyntax awaitExpression
+                || !GetCurrentMethodReturnType(model).SymbolEquals(model.GetTypeInfo(awaitExpression).Type))
             {
                 expression = null;
 

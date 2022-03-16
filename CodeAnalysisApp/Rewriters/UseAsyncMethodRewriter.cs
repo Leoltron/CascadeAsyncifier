@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
+using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
@@ -12,26 +13,38 @@ namespace CodeAnalysisApp.Rewriters
     {
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
-        private static readonly ConcurrentDictionary<Compilation, AsyncifiableMethodsMatcher> Matchers = new();
+        private readonly NUnitTestAttributeChecker testAttributeChecker;
+        private static readonly ConcurrentDictionary<Compilation, AsyncifiableMethodsMatcher> matchers = new();
 
 
         public UseAsyncMethodRewriter(SemanticModel model)
         {
             this.model = model;
-            matcher = Matchers.GetOrAdd(model.Compilation, c =>
-            {
-                var matcher = new AsyncifiableMethodsMatcher(c);
-                matcher.FillAsyncifiableMethodsFromCompilation();
-                return matcher;
-            });
+            testAttributeChecker = new NUnitTestAttributeChecker(model.Compilation);
+            matcher = matchers.GetOrAdd(
+                model.Compilation,
+                c =>
+                {
+                    var newMatcher = new AsyncifiableMethodsMatcher(c);
+                    newMatcher.FillAsyncifiableMethodsFromCompilation();
+
+                    return newMatcher;
+                });
         }
 
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             var visitedNode = (InvocationExpressionSyntax)base.VisitInvocationExpression(node);
 
-            if (!InAsyncMethod || visitedNode == null)
+            if (!InAsyncMethod || visitedNode == null || node.IsInNoAwaitBlock())
                 return visitedNode;
+
+            /*if (CurrentMethod != null &&
+                model.GetDeclaredSymbol(CurrentMethod) is IMethodSymbol methodSymbol &&
+                testAttributeChecker.HasTestAttribute(methodSymbol))
+            {
+                return visitedNode;
+            }*/
 
             if (ModelExtensions.GetSymbolInfo(model, node).Symbol is not IMethodSymbol symbol)
                 return visitedNode;
@@ -52,19 +65,35 @@ namespace CodeAnalysisApp.Rewriters
                     break;
                 case MemberAccessExpressionSyntax expression:
                 {
-                    var awaitExpression = SyntaxNodesExtensions.ToAwaitExpression(expression.WithName(newName), visitedNode);
+                    var awaitExpression = SyntaxNodesExtensions.ToAwaitExpression(
+                         expression.WithName(GenerateName(expression.Name, matchingMethod.Name)),
+                        visitedNode);
                     nodeWithAwaitExpression = visitedNode.WithExpression(awaitExpression);
 
                     break;
                 }
+                case MemberBindingExpressionSyntax:
+                    LogHelper.ManualAsyncificationRequired(node.GetLocation(), symbol.Name);
+                    //Notify that user input might be needed
+
+                    return visitedNode;
                 default:
                     throw new ArgumentException();
             }
 
-            if (visitedNode.Parent is not MemberAccessExpressionSyntax)
+            if (visitedNode.Parent is not MemberAccessExpressionSyntax && visitedNode.Parent is not ConditionalAccessExpressionSyntax)
                 return nodeWithAwaitExpression;
 
             return SyntaxFactory.ParenthesizedExpression(nodeWithAwaitExpression);
         }
+
+        private static SimpleNameSyntax GenerateName(SimpleNameSyntax prevName, string newName) =>
+            prevName switch
+            {
+                IdentifierNameSyntax => SyntaxFactory.IdentifierName(newName),
+                GenericNameSyntax genericNameSyntax => genericNameSyntax.WithIdentifier(
+                    SyntaxFactory.Identifier(newName)),
+                _ => throw new ArgumentException()
+            };
     }
 }

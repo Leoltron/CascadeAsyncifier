@@ -7,14 +7,17 @@ using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using CodeAnalysisApp.Visitors;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
+using CSharpExtensions = Microsoft.CodeAnalysis.CSharp.CSharpExtensions;
 
 namespace CodeAnalysisApp.Helpers
 {
     public class CascadeAsyncifier
     {
+        private readonly DocumentFilter documentFilter = new DocumentFilter();
         private readonly ConcurrentDictionary<IMethodSymbol, bool> blacklistedMethods = new(SymbolEqualityComparer.Default);
         
         public async Task Start(Workspace workspace)
@@ -37,7 +40,7 @@ namespace CodeAnalysisApp.Helpers
                 .SelectMany(p =>
                                     {
                                         var matcher = matchers[p.Id];
-                                        return p.Documents.Select(document => (document, task: TraverseDocument(document, matcher)));
+                                        return p.Documents.Where(d => !documentFilter.IgnoreDocument(d)).Select(document => (document, task: TraverseDocument(document, matcher)));
                                     })
                 .ToList();
             
@@ -56,15 +59,15 @@ namespace CodeAnalysisApp.Helpers
 
             var asyncifableMethodsQueue = new Queue<IMethodSymbol>(
                 docTasks.SelectMany(d => d.task.Result.Values.SelectMany(l => l.Select(mp => mp.Symbol))));
-            var visitedMethods = new HashSet<IMethodSymbol>(asyncifableMethodsQueue, SymbolEqualityComparer.Default);
+            var visitedMethods = new HashSet<IMethodSymbol>(asyncifableMethodsQueue.Select(m => m.OriginalDefinition), SymbolEqualityComparer.Default);
 
             while (asyncifableMethodsQueue.Any())
             {
                 var methodSymbol = asyncifableMethodsQueue.Dequeue();
-
+                
                 if (methodSymbol.IsAbstract)
                 {
-                    foreach (var method in (await SymbolFinder.FindOverridesAsync(methodSymbol, solution)).OfType<IMethodSymbol>())
+                    foreach (var method in (await SymbolFinder.FindOverridesAsync(methodSymbol, solution)).Concat(await SymbolFinder.FindImplementationsAsync(methodSymbol, solution)).OfType<IMethodSymbol>())
                     {
                         await AddMethod(method);
                     }
@@ -80,9 +83,31 @@ namespace CodeAnalysisApp.Helpers
                 }
                 
                 var callers = await SymbolFinder.FindCallersAsync(methodSymbol, solution);
-                foreach (var callingSymbol in callers.Where(f => f.IsDirect).Select(c => c.CallingSymbol).OfType<IMethodSymbol>())
+                foreach (var caller in callers.Where(f => f.IsDirect))
                 {
-                    if(callingSymbol.WholeHierarchyChainIsInSourceCode())
+                    if(caller.CallingSymbol is IMethodSymbol callingSymbol && 
+                       caller.Locations.Any(location =>
+                       {
+                           if (location.SourceTree == null)
+                               return false;
+
+                           var syntaxNode = location.SourceTree.GetRoot().FindNode(location.SourceSpan);
+
+                           if (syntaxNode.IsInNoAwaitBlock())
+                           {
+                               return false;
+                           }
+
+                           var canBeAutoAsyncified = 
+                               IsInvocation(syntaxNode)
+                               && syntaxNode.IsContainingFunctionADeclaredMethod();
+                           
+                           if(!canBeAutoAsyncified)
+                               LogHelper.ManualAsyncificationRequired(location, methodSymbol.Name);
+
+                           return canBeAutoAsyncified;
+                       }) 
+                       && callingSymbol.WholeHierarchyChainIsInSourceCode())
                         await AddMethod(callingSymbol);
                 }
             }
@@ -103,7 +128,8 @@ namespace CodeAnalysisApp.Helpers
                 var methodSyntax =
                     (MethodDeclarationSyntax)await method.DeclaringSyntaxReferences.First().GetSyntaxAsync();
 
-                var typeSyntax = methodSyntax.Parent as TypeDeclarationSyntax;;
+                var typeSyntax = methodSyntax.Parent as TypeDeclarationSyntax;
+                
                 var document = solution.GetDocument(methodSyntax.SyntaxTree);
                 if(document == null)
                     return;
@@ -115,10 +141,24 @@ namespace CodeAnalysisApp.Helpers
                 if (methodSyntax.IsAsync() || awaitChecker.IsTypeAwaitable(methodSyntax.ReturnType))
                     return;
 
-                if (!visitedMethods.Add(method) || typeSyntax == null)
+                if (!visitedMethods.Add(method.OriginalDefinition) || typeSyntax == null)
                     return;
 
-                if (semanticModel!.GetDeclaredSymbol(typeSyntax) is not ITypeSymbol classSymbol)
+                foreach (var project in solution.Projects)
+                {
+                    var compilation = await project.GetCompilationAsync();
+                    foreach (var similarMethod in SymbolFinder.FindSimilarSymbols(method.OriginalDefinition, compilation!))
+                    {
+                        visitedMethods.Add(similarMethod);
+                    }
+                }
+
+                if (matchers[document.Project.Id].CanBeAsyncified(method))
+                {
+                    return;
+                }
+
+                if (ModelExtensions.GetDeclaredSymbol(semanticModel!, typeSyntax) is not ITypeSymbol classSymbol)
                 {
                     return;
                 }
@@ -153,6 +193,9 @@ namespace CodeAnalysisApp.Helpers
             var slnEditor = new SolutionEditor(workspace.CurrentSolution);
             foreach (var docClassPair in docClassPairs)
             {
+                if(documentFilter.IgnoreDocument(docClassPair.Key))
+                    continue;
+                
                 Console.Write($"\r{(double)methodsIndex/totalMethods:P} ");
                 methodsIndex++;
                 var document = docClassPair.Key;
@@ -161,12 +204,8 @@ namespace CodeAnalysisApp.Helpers
 
                 foreach (var method in docClassPair.Value.SelectMany(pair => classToMethods[pair]))
                 {
-                    if (matchers[document.Project.Id].CanBeAsyncified(method.Symbol))
-                    {
-                        continue;
-                    }
 
-                    var asyncMethodNode = method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract);
+                    var asyncMethodNode = method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract).WithoutRegionTrivia();
                     editor.InsertAfter(method.Node, asyncMethodNode.LeadWithLineFeedIfNotPresent());
                 }
                 editor.ReplaceNode(root, (n, gen) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
@@ -205,7 +244,7 @@ namespace CodeAnalysisApp.Helpers
             };
             finder.CandidateBlacklisted += m =>
             {
-                blacklistedMethods.TryAdd((IMethodSymbol) model.GetDeclaredSymbol(m), true);
+                blacklistedMethods.TryAdd((IMethodSymbol) ModelExtensions.GetDeclaredSymbol(model, m), true);
                 if (m.Parent is not ClassDeclarationSyntax @class)
                     return;
                 
@@ -218,13 +257,33 @@ namespace CodeAnalysisApp.Helpers
 
             return classToMethods
                 .Select(
-                    p => (new TypeSyntaxSemanticPair(p.Key, model.GetDeclaredSymbol(p.Key) as ITypeSymbol),
+                    p => (new TypeSyntaxSemanticPair(p.Key, ModelExtensions.GetDeclaredSymbol(model, p.Key) as ITypeSymbol),
                         p.Value.Select(
-                                m => new MethodSyntaxSemanticPair(m, model.GetDeclaredSymbol(m) as IMethodSymbol))
+                                m => new MethodSyntaxSemanticPair(m, ModelExtensions.GetDeclaredSymbol(model, m) as IMethodSymbol))
                             .Where(mp => mp.Symbol != null)
                             .ToList()))
                 .Where(p => p.Item1.Symbol != null && p.Item2.Any())
                 .ToDictionary(p => p.Item1, p => p.Item2);
+        }
+
+        private static bool IsInvocation(SyntaxNode node)
+        {
+            while (node != null)
+            {
+                switch (node.Kind())
+                {
+                    case SyntaxKind.Argument:
+                    case SyntaxKind.CoalesceAssignmentExpression:
+                    case SyntaxKind.SimpleAssignmentExpression:
+                        return false;
+                    case SyntaxKind.InvocationExpression:
+                        return true;
+                }
+
+                node = node.Parent;
+            }
+
+            return false;
         }
     }
 }

@@ -24,10 +24,10 @@ namespace CodeAnalysisApp
                     (_ => new AsyncVoidRewriter(), "async void"),
                     (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
                     (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
-                    (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
-                    (m => new OnlyAwaitInReturnAsyncMethodRewriter(m), "Only one await in return"),
-                    (m => new OnlyAwaitInAsyncLambdaRewriter(m), "One statement in lambda"),
-                    (m => new AsyncMethodEndsWithAwaitExpressionRewriter(m), "Only one await at the end of method"),
+                   // (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
+                   (m => new OnlyAwaitInReturnAsyncMethodRewriter(m), "Only one await in return"),
+                   (m => new OnlyAwaitInAsyncLambdaRewriter(m), "One statement in lambda"),
+                   (m => new AsyncMethodEndsWithAwaitExpressionRewriter(m), "Only one await at the end of method"),
                 };
 
         static async Task Main(string[] args)
@@ -59,7 +59,8 @@ namespace CodeAnalysisApp
 
 
         private static string CurrentTraverserName = "";
-        private static int CurrentProgress = 0;
+        private static double CurrentTraverserProgress = 0;
+        private static bool CurrentTraverserIsFinished => CurrentTraverserProgress == 1;
 
         private static async Task<TimeSpan[]> Rewrite(MSBuildWorkspace workspace)
         {
@@ -69,9 +70,11 @@ namespace CodeAnalysisApp
             var solutionTraverser = new MutableSolutionTraverser(workspace);
             solutionTraverser.ReportProgress += (i, total) =>
             {
-                CurrentProgress = Math.Max(i, CurrentProgress);
-                Console.Write($"\r[{CurrentTraverserName}] {(double)CurrentProgress/total:P} ");
-                if (CurrentProgress == total)
+                if(CurrentTraverserIsFinished)
+                    return;
+                CurrentTraverserProgress = Math.Max((double)i/total, CurrentTraverserProgress);
+                Console.Write($"\r[{CurrentTraverserName}] {CurrentTraverserProgress:P} ");
+                if (CurrentTraverserIsFinished)
                 {
                     Console.WriteLine("Done.");
                 }
@@ -85,7 +88,7 @@ namespace CodeAnalysisApp
                 var sw = Stopwatch.StartNew();
                 var (factory, name) = rewriterFactories[i];
                 CurrentTraverserName = name;
-                CurrentProgress = 0;
+                CurrentTraverserProgress = 0;
                 await ApplyRewriter(solutionTraverser, factory);
                 time[i] += sw.Elapsed;
             }
@@ -148,7 +151,7 @@ namespace CodeAnalysisApp
 
             while (true)
             {
-                var userResponse = Console.ReadLine();
+                var userResponse = "2";//Console.ReadLine();
                 if (int.TryParse(userResponse, out int instanceNumber) &&
                     instanceNumber > 0 &&
                     instanceNumber <= visualStudioInstances.Length)

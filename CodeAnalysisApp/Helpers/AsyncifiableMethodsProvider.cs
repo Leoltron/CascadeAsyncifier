@@ -22,7 +22,7 @@ namespace CodeAnalysisApp.Helpers
         public AsyncifiableMethodsProvider(Compilation compilation)
         {
             this.compilation = compilation;
-            methodCompareHelper = new MethodCompareHelper(new AwaitableChecker(compilation));
+            methodCompareHelper = new MethodCompareHelper(compilation);
         }
 
         public IEnumerable<SyncAsyncMethodSymbolPair> Provide() => 

@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
@@ -9,10 +11,12 @@ namespace CodeAnalysisApp.Helpers
     public class MethodCompareHelper
     {
         private readonly AwaitableChecker awaitableChecker;
+        private readonly INamedTypeSymbol cancellationTokenSymbol;
 
-        public MethodCompareHelper(AwaitableChecker awaitableChecker)
+        public MethodCompareHelper(Compilation compilation)
         {
-            this.awaitableChecker = awaitableChecker;
+            awaitableChecker = new AwaitableChecker(compilation);
+            cancellationTokenSymbol = compilation.GetTypeByMetadataName(typeof(CancellationToken).FullName!);
         }
 
         public bool IsAsyncVersionOf(IMethodSymbol method, IMethodSymbol asyncMethod, bool ignoreName = false)
@@ -85,12 +89,37 @@ namespace CodeAnalysisApp.Helpers
             }
         }
 
-        private static bool CompareArguments(IMethodSymbol one, IMethodSymbol other)
+        private bool CompareArguments(IMethodSymbol one, IMethodSymbol other)
         {
             if (one.IsGenericMethod != other.IsGenericMethod)
                 return false;
+            
+            var oneParameters = one.Parameters;
+            var otherParameters = other.Parameters;
 
-            return one.Parameters.SequencesEqual(other.Parameters, one.IsGenericMethod
+            if (oneParameters.Length != otherParameters.Length)
+            {
+                if (Math.Abs(oneParameters.Length - oneParameters.Length) > 1)
+                    return false;
+
+                var extraParam = oneParameters.Length > otherParameters.Length
+                    ? oneParameters.Last()
+                    : otherParameters.Last();
+
+                if (extraParam.IsOptional && extraParam.Type.SymbolEquals(cancellationTokenSymbol))
+                {
+                    if (oneParameters.Length > otherParameters.Length)
+                    {
+                        oneParameters = oneParameters.RemoveAt(oneParameters.Length - 1);
+                    }
+                    else
+                    {
+                        otherParameters = otherParameters.RemoveAt(otherParameters.Length - 1);
+                    }
+                }
+            }
+
+            return oneParameters.SequencesEqual(otherParameters, one.IsGenericMethod
                                                      ? (oneParam, otherParam) =>
                                                          CompareParameterSymbolsModifiers(oneParam, otherParam) &&
                                                          CompareTypeSymbolsIgnoreGenericConstraints(

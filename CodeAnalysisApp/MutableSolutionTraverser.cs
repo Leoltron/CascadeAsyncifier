@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Helpers;
 using Microsoft.CodeAnalysis;
 
 namespace CodeAnalysisApp
 {
     public class MutableSolutionTraverser
     {
+        private readonly DocumentFilter documentFilter = new DocumentFilter();
         private readonly Workspace workspace;
         private readonly HashSet<DocumentId> traversedDocs = new();
         private readonly int maxOneDocReloads;
@@ -65,6 +67,9 @@ namespace CodeAnalysisApp
             {
                 foreach (var document in project.Documents)
                 {
+                    if(documentFilter.IgnoreDocument(document))
+                        continue;
+                    
                     if(traversedDocs.Contains(document.Id))
                         continue;
                     

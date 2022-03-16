@@ -22,8 +22,8 @@ namespace CodeAnalysisApp.Helpers
             }
         }
 
-        public bool CanBeAsyncified(IMethodSymbol method) => asyncifiableMethodSymbols.ContainsKey(method);
+        public bool CanBeAsyncified(IMethodSymbol method) => asyncifiableMethodSymbols.ContainsKey(method.ReducedFrom ?? method.OriginalDefinition);
 
-        public bool TryGetAsyncMethod(IMethodSymbol method, out IMethodSymbol methodSymbol) => asyncifiableMethodSymbols.TryGetValue(method, out methodSymbol);
+        public bool TryGetAsyncMethod(IMethodSymbol method, out IMethodSymbol methodSymbol) => asyncifiableMethodSymbols.TryGetValue(method.ReducedFrom ?? method.OriginalDefinition, out methodSymbol);
     }
 }

@@ -72,5 +72,50 @@ namespace CodeAnalysisApp.Extensions
                 .WithAwaitKeyword(awaitKeyword)
                 .WithTrailingTrivia(nodeReplacedWithAwait.GetTrailingTrivia());
         }
+
+        public static bool IsContainingFunctionADeclaredMethod(this SyntaxNode node)
+        {
+            while (node.Parent != null)
+            {
+                node = node.Parent;
+                switch (node.Kind())
+                {
+                    case SyntaxKind.MethodDeclaration:
+                        return true;
+                    case SyntaxKind.LocalFunctionStatement:
+                    case SyntaxKind.ParenthesizedLambdaExpression:
+                    case SyntaxKind.SimpleLambdaExpression:
+                    case SyntaxKind.AnonymousMethodExpression:
+                        return false;
+                }
+            }
+
+            return false;
+        }
+        
+        public static bool IsInNoAwaitBlock(this SyntaxNode node)
+        {
+            while (node != null)
+            {
+                switch (node.Kind())
+                {
+                    case SyntaxKind.FinallyClause:
+                    case SyntaxKind.CatchClause:
+                    case SyntaxKind.CatchFilterClause:
+                    case SyntaxKind.LockStatement:
+                        return true;
+                    case SyntaxKind.MethodDeclaration:
+                    case SyntaxKind.LocalFunctionStatement:
+                    case SyntaxKind.ParenthesizedLambdaExpression:
+                    case SyntaxKind.SimpleLambdaExpression:
+                    case SyntaxKind.AnonymousMethodExpression:
+                        return false;
+                }
+
+                node = node.Parent;
+            }
+
+            return false;
+        }
     }
 }

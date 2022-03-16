@@ -83,5 +83,12 @@ namespace CodeAnalysisApp
                 ? simpleLambdaExpression
                 : simpleLambdaExpression.WithAsyncKeyword(Token(SyntaxKind.None));
         }
+
+        public static T WithoutRegionTrivia<T>(this T node) where T : SyntaxNode
+        {
+            return node.ReplaceTrivia(
+                node.GetLeadingTrivia().Concat(node.GetTrailingTrivia()).Where(t => t.IsKind(SyntaxKind.RegionDirectiveTrivia)),
+                (_, _) => LineFeed);
+        }
     }
 }

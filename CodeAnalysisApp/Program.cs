@@ -8,9 +8,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
-using CodeAnalysisApp.Utils;
+using Serilog;
 
 namespace CodeAnalysisApp
 {
@@ -20,7 +21,7 @@ namespace CodeAnalysisApp
             rewriterFactories =
                 new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
                 {
-                    (m => new UseAsyncMethodRewriter(m), "Use async method"),
+                    //(m => new UseAsyncMethodRewriter(m), "Use async method"),
                     (_ => new AsyncVoidRewriter(), "async void"),
                     (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
                     (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
@@ -32,28 +33,28 @@ namespace CodeAnalysisApp
 
         static async Task Main(string[] args)
         {
-            Console.WriteLine(typeof(Task).FullName);
+            SetupLog();
 
             RegisterVSMSBuild();
 
             using var workspace = MSBuildWorkspace.Create();
 
             // Print message for WorkspaceFailed event to help diagnosing project load failures.
-            workspace.WorkspaceFailed += (o, e) => Console.WriteLine(e.Diagnostic.Message);
+            workspace.WorkspaceFailed += (o, e) => Log.Warning(e.Diagnostic.Message);
 
             var solutionPath = args[0];
-            Console.WriteLine($"Loading solution '{solutionPath}'");
+            Log.Information("Loading solution '{}'", solutionPath);
 
             // Attach progress reporter so we print projects as they are loaded.
             var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
-            Console.WriteLine($"Finished loading solution '{solutionPath}'");
+            Log.Information("Finished loading solution '{}'", solutionPath);
 
             var time = await Rewrite(workspace);
 
-            Console.WriteLine("Rewriters total time:");
+            Log.Information("Rewriters total time:");
             for (var i = 0; i < rewriterFactories.Count; i++)
             {
-                Console.WriteLine("\t" + rewriterFactories[i].name + ":\t " + time[i]);
+                Log.Information("\t{}:\t {}", rewriterFactories[i].name, time[i]);
             }
         }
 
@@ -65,8 +66,7 @@ namespace CodeAnalysisApp
         private static async Task<TimeSpan[]> Rewrite(MSBuildWorkspace workspace)
         {
             var time = new TimeSpan[rewriterFactories.Count];
-
-            CurrentTraverserName = "Initial async void";
+            
             var solutionTraverser = new MutableSolutionTraverser(workspace);
             solutionTraverser.ReportProgress += (i, total) =>
             {
@@ -79,7 +79,9 @@ namespace CodeAnalysisApp
                     Console.WriteLine("Done.");
                 }
             };
-            await ApplyRewriter(solutionTraverser, _ => new AsyncVoidRewriter());
+
+            CurrentTraverserName = "Initial async void";
+            await solutionTraverser.ApplyRewriterAsync(_ => new AsyncVoidRewriter());
             
             await new CascadeAsyncifier().Start(workspace);
             
@@ -89,34 +91,11 @@ namespace CodeAnalysisApp
                 var (factory, name) = rewriterFactories[i];
                 CurrentTraverserName = name;
                 CurrentTraverserProgress = 0;
-                await ApplyRewriter(solutionTraverser, factory);
+                await solutionTraverser.ApplyRewriterAsync(factory);
                 time[i] += sw.Elapsed;
             }
 
             return time;
-        }
-
-        private static Task ApplyRewriter(MutableSolutionTraverser slnTraverser, Func<SemanticModel, CSharpSyntaxRewriter> rewriterFactory)
-        {
-            return slnTraverser.TraverseAsync(
-                async document =>
-                {
-                    var root = await document.GetSyntaxRootAsync();
-                    var model = await document.GetSemanticModelAsync();
-                    var newSource = root;
-                    var rewriter = rewriterFactory(model);
-                    newSource = rewriter.Visit(newSource);
-
-                    var oldText = (await document.GetSyntaxRootAsync()).GetText();
-                    var newSourceText = newSource.GetText();
-
-                    if (newSourceText.ContentEquals(oldText))
-                        return TraverseResult.Continue;
-
-                    return oldText.ToString().EqualsIgnoreWhitespace(newSourceText.ToString())
-                        ? TraverseResult.Continue
-                        : TraverseResult.Reload(document.WithSyntaxRoot(newSource));
-                });
         }
 
 
@@ -130,7 +109,7 @@ namespace CodeAnalysisApp
                 // Handle selecting the version of MSBuild you want to use.
                 : SelectVisualStudioInstance(visualStudioInstances);
 
-            Console.WriteLine($"Using MSBuild at '{instance.MSBuildPath}' to load projects.");
+            Log.Information("Using MSBuild at '{}' to load projects", instance.MSBuildPath);
 
             // NOTE: Be sure to register an instance with the MSBuildLocator 
             //       before calling MSBuildWorkspace.Create()
@@ -173,9 +152,13 @@ namespace CodeAnalysisApp
                     projectDisplay += $" ({loadProgress.TargetFramework})";
                 }
 
-                Console.WriteLine(
-                    $"{loadProgress.Operation,-15} {loadProgress.ElapsedTime,-15:m\\:ss\\.fffffff} {projectDisplay}");
+                Log.Information($"{loadProgress.Operation,-15} {loadProgress.ElapsedTime,-15:m\\:ss\\.fffffff} {projectDisplay}");
             }
+        }
+
+        private static void SetupLog()
+        {
+            Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
         }
     }
 }

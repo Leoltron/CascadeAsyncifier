@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Extensions;
+using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
 using CodeAnalysisApp.Visitors;
 using Microsoft.CodeAnalysis;
@@ -11,6 +12,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Serilog;
 using CSharpExtensions = Microsoft.CodeAnalysis.CSharp.CSharpExtensions;
 
 namespace CodeAnalysisApp.Helpers
@@ -22,8 +24,8 @@ namespace CodeAnalysisApp.Helpers
         
         public async Task Start(Workspace workspace)
         {
-            Console.WriteLine("Asyncifiaction started");
-            Console.Write("Collecting initial methods with async overload... ");
+            Log.Information("Asyncifiaction started");
+            Log.Information("Collecting initial methods with async overload... ");
             
             var solution = workspace.CurrentSolution;
             var matchers = new Dictionary<ProjectId, AsyncifiableMethodsMatcher>();
@@ -34,7 +36,7 @@ namespace CodeAnalysisApp.Helpers
                 matchers[project.Id] = matcher;
             }
             
-            Console.WriteLine("Done.");
+            Log.Information("Done");
             
             var docTasks = solution.Projects
                 .SelectMany(p =>
@@ -45,12 +47,12 @@ namespace CodeAnalysisApp.Helpers
                 .ToList();
             
             
-            Console.WriteLine("Total documents: "+docTasks.Count);
-            Console.Write("Collecting initial asyncifiable methods... ");
+            Log.Information("Total documents: {}", docTasks.Count);
+            Log.Information("Collecting initial asyncifiable methods... ");
 
             await Task.WhenAll(docTasks.Select(p => p.task));
-            Console.WriteLine("Done.");
-            Console.Write("Looking for asyncifiable methods through initial asyncifiable methods usage and hierarchy... ");
+            Log.Information("Done");
+            Log.Information("Looking for asyncifiable methods through initial asyncifiable methods usage and hierarchy... ");
 
             var documentToClasses = docTasks.ToDictionary(
                 docTask => docTask.document,
@@ -176,28 +178,25 @@ namespace CodeAnalysisApp.Helpers
 
                 classToMethods.AddToDictList(classPair, methodPair);
             }
-            Console.WriteLine("Done.");
+            Log.Information("Done");
 
             
-            var docClassPairs = documentToClasses.Where(v => v.Value.Any()).ToList();
+            var docClassPairs = documentToClasses.Where(v => !documentFilter.IgnoreDocument(v.Key) && v.Value.Any()).ToList();
             var totalClasses = classToMethods.Count(c => c.Value.Any());
             
             var totalMethods = classToMethods.Sum(d => d.Value.Count);
             var methodsIndex = 0;
             
-            Console.WriteLine($"Total of {docClassPairs.Count} docs, {totalClasses} types and {totalMethods} methods");
+            Log.Information("Total of {} docs, {} types and {} methods",docClassPairs.Count,totalClasses, totalMethods);
             
             if(totalMethods == 0)
                 return;
             
-            Console.WriteLine("Duplicating and asyncifing signature of methods... ");
+            Log.Information("Duplicating and asyncifing signature of methods...");
 
             var slnEditor = new SolutionEditor(workspace.CurrentSolution);
             foreach (var docClassPair in docClassPairs)
             {
-                if(documentFilter.IgnoreDocument(docClassPair.Key))
-                    continue;
-                
                 Console.Write($"\r{(double)methodsIndex/totalMethods:P} ");
                 methodsIndex++;
                 var document = docClassPair.Key;
@@ -214,8 +213,15 @@ namespace CodeAnalysisApp.Helpers
             }
 
             workspace.TryApplyChanges(slnEditor.GetChangedSolution());
-            Console.WriteLine($"\r{(1):P} Done.");
+            Console.WriteLine($"\r{(1):P}");
+            Log.Information("Done");
 
+            Log.Information("Replacing methods' calls with async overloads");
+            var traverser = new MutableSolutionTraverser(workspace);
+            await traverser.ApplyRewriterAsync(m => new UseAsyncMethodRewriter(m));
+            Log.Information("Done");
+            
+            
         }
 
         private async Task<Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(

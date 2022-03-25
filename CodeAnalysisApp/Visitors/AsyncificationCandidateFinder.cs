@@ -35,7 +35,7 @@ namespace CodeAnalysisApp.Visitors
 
         public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            if (CanBeAsyncified(node))
+            if (IsAsyncificationCandidate(node))
             {
                 base.VisitMethodDeclaration(node);
             }
@@ -46,7 +46,7 @@ namespace CodeAnalysisApp.Visitors
             }
         }
 
-        private bool CanBeAsyncified(MethodDeclarationSyntax node)
+        private bool IsAsyncificationCandidate(MethodDeclarationSyntax node)
         {
             var methodSymbol = model.GetDeclaredSymbol(node);
 

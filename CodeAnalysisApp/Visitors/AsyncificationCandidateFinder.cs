@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
@@ -19,7 +20,8 @@ namespace CodeAnalysisApp.Visitors
         private readonly AsyncifiableMethodsMatcher matcher;
         private readonly AwaitableChecker awaitableChecker;
         private readonly NUnitTestAttributeChecker testAttributeChecker;
-        private readonly HashSet<MethodDeclarationSyntax> ignoredCandidates = new();
+        private readonly HashSet<MethodDeclarationSyntax> ignoredMethods = new();
+        private readonly HashSet<MethodDeclarationSyntax> unreportedInOutRefMethods = new();
 
         public AsyncificationCandidateFinder(
             SemanticModel model,
@@ -33,28 +35,43 @@ namespace CodeAnalysisApp.Visitors
 
         public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            var methodSymbol = model.GetDeclaredSymbol(node);
-            if (matcher.CanBeAsyncified(methodSymbol)/* || testAttributeChecker.HasTestAttribute(methodSymbol)*/)
-            {
-                CandidateBlacklisted?.Invoke(node);
-                ignoredCandidates.Add(node);
-            }
-            else
+            if (CanBeAsyncified(node))
             {
                 base.VisitMethodDeclaration(node);
             }
+            else
+            {
+                CandidateBlacklisted?.Invoke(node);
+                ignoredMethods.Add(node);
+            }
+        }
+
+        private bool CanBeAsyncified(MethodDeclarationSyntax node)
+        {
+            var methodSymbol = model.GetDeclaredSymbol(node);
+
+            if (matcher.CanBeAsyncified(methodSymbol)/* || testAttributeChecker.HasTestAttribute(methodSymbol)*/)
+                return false;
+
+            if (node.ParameterList.Parameters.Any(
+                    p =>
+                        p.Modifiers.Any(SyntaxKind.OutKeyword) ||
+                        p.Modifiers.Any(SyntaxKind.InKeyword) ||
+                        p.Modifiers.Any(SyntaxKind.RefKeyword)))
+            {
+                unreportedInOutRefMethods.Add(node);
+                
+                return false;
+            }
+
+            return true;
         }
 
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             base.VisitInvocationExpression(node);
 
-            if (InAsyncMethod)
-            {
-                return;
-            }
-
-            if (CurrentMethod == null || ignoredCandidates.Contains(CurrentMethod) || node.IsInNoAwaitBlock())
+            if (InAsyncMethod || CurrentMethod == null)
             {
                 return;
             }
@@ -62,9 +79,23 @@ namespace CodeAnalysisApp.Visitors
             if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol methodSymbol)
             {
                 return;
+            }            
+            
+            var canBeAsyncified = new Lazy<bool>(() => matcher.CanBeAsyncified(methodSymbol));
+
+            if (unreportedInOutRefMethods.Contains(CurrentMethod) && canBeAsyncified.Value)
+            {
+                LogHelper.CantAsyncifyInOutRefMethod(CurrentMethod.Identifier.Text, node.GetLocation().GetLineSpan());
+                unreportedInOutRefMethods.Remove(CurrentMethod);
+                return;
             }
 
-            if (!matcher.CanBeAsyncified(methodSymbol))
+            if (ignoredMethods.Contains(CurrentMethod) || node.IsInNoAwaitBlock())
+            {
+                return;
+            }
+
+            if (!canBeAsyncified.Value)
             {
                 return;
             }
@@ -75,7 +106,7 @@ namespace CodeAnalysisApp.Visitors
             }
 
             CandidateFound?.Invoke(CurrentMethod);
-            ignoredCandidates.Add(CurrentMethod);
+            ignoredMethods.Add(CurrentMethod);
         }
 
         public override void VisitYieldStatement(YieldStatementSyntax node)

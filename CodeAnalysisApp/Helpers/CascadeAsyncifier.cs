@@ -129,10 +129,12 @@ namespace CodeAnalysisApp.Helpers
                     (MethodDeclarationSyntax)await method.DeclaringSyntaxReferences.First().GetSyntaxAsync();
 
                 var typeSyntax = methodSyntax.Parent as TypeDeclarationSyntax;
-                
+
                 var document = solution.GetDocument(methodSyntax.SyntaxTree);
-                if(document == null)
+                if (document == null)
+                {
                     return;
+                }
 
                 var semanticModel = await document.GetSemanticModelAsync();
 

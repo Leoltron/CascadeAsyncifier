@@ -99,9 +99,6 @@ namespace CodeAnalysisApp.Extensions
             {
                 switch (node.Kind())
                 {
-                    case SyntaxKind.FinallyClause:
-                    case SyntaxKind.CatchClause:
-                    case SyntaxKind.CatchFilterClause:
                     case SyntaxKind.LockStatement:
                         return true;
                     case SyntaxKind.MethodDeclaration:

@@ -1,6 +1,7 @@
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeAnalysisApp.Rewriters
@@ -22,7 +23,7 @@ namespace CodeAnalysisApp.Rewriters
             if (!InAsyncMethod)
                 return base.VisitMemberAccessExpression(node);
 
-            var expType = semanticModel.GetTypeInfo(node.Expression);
+            var expType = ModelExtensions.GetTypeInfo(semanticModel, node.Expression);
 
             if (node.Name.Identifier.Text == "Result" &&
                 awaitableSyntaxChecker.IsGenericTask(expType.Type))
@@ -38,14 +39,24 @@ namespace CodeAnalysisApp.Rewriters
                 node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
                 return base.VisitInvocationExpression(node);
 
+            var shouldBeParenthesized = node.Parent is MemberAccessExpressionSyntax ||
+                                        node.Parent is ConditionalAccessExpressionSyntax;
+
             var identifierText = memberAccessNode.Name.Identifier.Text;
             var memberAccessExpression = memberAccessNode.Expression;
             if (identifierText == "Wait")
             {
-                var expType = semanticModel.GetTypeInfo(memberAccessExpression).Type;
+                var expType = ModelExtensions.GetTypeInfo(semanticModel, memberAccessExpression).Type;
 
                 if (awaitableSyntaxChecker.IsTask(expType))
-                    return SyntaxNodesExtensions.ToAwaitExpression(memberAccessExpression, node);
+                {
+                    var expression = SyntaxNodesExtensions.ToAwaitExpression(memberAccessExpression, node);
+
+                    if(shouldBeParenthesized)
+                        return SyntaxFactory.ParenthesizedExpression(expression);
+
+                    return expression;
+                }
             }
             else if (identifierText == "GetResult")
             {
@@ -56,7 +67,12 @@ namespace CodeAnalysisApp.Rewriters
                     innerMemberAccessNode.Name.Identifier.Text == "GetAwaiter" &&
                     awaitableSyntaxChecker.IsTypeAwaitable(innerMemberAccessNode.Expression))
                 {
-                    return SyntaxNodesExtensions.ToAwaitExpression(innerMemberAccessNode.Expression, node);
+                    var expression = SyntaxNodesExtensions.ToAwaitExpression(innerMemberAccessNode.Expression, node);
+
+                    if(shouldBeParenthesized)
+                        return SyntaxFactory.ParenthesizedExpression(expression);
+                    
+                    return expression;
                 }
             }
 

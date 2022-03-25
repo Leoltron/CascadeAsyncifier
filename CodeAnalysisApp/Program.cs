@@ -151,7 +151,7 @@ namespace CodeAnalysisApp
 
             while (true)
             {
-                var userResponse = "2";//Console.ReadLine();
+                var userResponse = Console.ReadLine();
                 if (int.TryParse(userResponse, out int instanceNumber) &&
                     instanceNumber > 0 &&
                     instanceNumber <= visualStudioInstances.Length)

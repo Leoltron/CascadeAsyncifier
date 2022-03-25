@@ -17,5 +17,10 @@ namespace CodeAnalysisApp.Helpers
             Console.WriteLine(
                 $"Cant automatically apply async overload {(string.IsNullOrEmpty(methodWithAsyncOverload) ? "" : $"of {methodWithAsyncOverload} ")}in {span}");
         }
+
+        public static void CantAsyncifyInOutRefMethod(string methodName, FileLinePositionSpan span)
+        {
+            Console.WriteLine($"Cant automatically convert method {methodName} in {span}: some of arguments have \"in\", \"out\", or \"ref\" modifier.");
+        }
     }
 }

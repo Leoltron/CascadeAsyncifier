@@ -43,18 +43,18 @@ namespace CodeAnalysisApp
             workspace.WorkspaceFailed += (o, e) => Log.Warning(e.Diagnostic.Message);
 
             var solutionPath = args[0];
-            Log.Information("Loading solution '{}'", solutionPath);
+            Log.Information("Loading solution '{SolutionPath}'", solutionPath);
 
             // Attach progress reporter so we print projects as they are loaded.
             var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
-            Log.Information("Finished loading solution '{}'", solutionPath);
+            Log.Information("Finished loading solution '{SolutionPath}'", solutionPath);
 
             var time = await Rewrite(workspace);
 
             Log.Information("Rewriters total time:");
             for (var i = 0; i < rewriterFactories.Count; i++)
             {
-                Log.Information("\t{}:\t {}", rewriterFactories[i].name, time[i]);
+                Log.Information("\t{Rewriter}:\t {Time}", rewriterFactories[i].name, time[i]);
             }
         }
 
@@ -109,7 +109,7 @@ namespace CodeAnalysisApp
                 // Handle selecting the version of MSBuild you want to use.
                 : SelectVisualStudioInstance(visualStudioInstances);
 
-            Log.Information("Using MSBuild at '{}' to load projects", instance.MSBuildPath);
+            Log.Information("Using MSBuild at '{Path}' to load projects", instance.MSBuildPath);
 
             // NOTE: Be sure to register an instance with the MSBuildLocator 
             //       before calling MSBuildWorkspace.Create()

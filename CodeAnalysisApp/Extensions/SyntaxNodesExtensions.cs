@@ -114,5 +114,24 @@ namespace CodeAnalysisApp.Extensions
 
             return false;
         }
+
+        public static SyntaxNode GetNextSibling(this SyntaxNode node)
+        {
+            var parent = node.Parent;
+
+            if (parent == null)
+                return null;
+
+            SyntaxNode prevNode = null;
+            foreach (var childNode in parent.ChildNodes())
+            {
+                if (prevNode == node)
+                    return childNode;
+
+                prevNode = childNode;
+            }
+
+            return null;
+        }
     }
 }

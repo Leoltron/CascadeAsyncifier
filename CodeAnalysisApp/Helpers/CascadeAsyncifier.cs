@@ -47,7 +47,7 @@ namespace CodeAnalysisApp.Helpers
                 .ToList();
             
             
-            Log.Information("Total documents: {}", docTasks.Count);
+            Log.Information("Total documents: {TotalDocs}", docTasks.Count);
             Log.Information("Collecting initial asyncifiable methods... ");
 
             await Task.WhenAll(docTasks.Select(p => p.task));
@@ -67,9 +67,9 @@ namespace CodeAnalysisApp.Helpers
             {
                 var methodSymbol = asyncifableMethodsQueue.Dequeue();
                 
-                if (methodSymbol.IsAbstract)
+                if (methodSymbol.IsAbstract || methodSymbol.IsVirtual)
                 {
-                    foreach (var method in (await SymbolFinder.FindOverridesAsync(methodSymbol, solution)).Concat(await SymbolFinder.FindImplementationsAsync(methodSymbol, solution)).OfType<IMethodSymbol>())
+                    foreach (var method in (await solution.FindOverridesAndImplementationsAsync(methodSymbol)).OfType<IMethodSymbol>())
                     {
                         await AddMethod(method);
                     }
@@ -187,7 +187,7 @@ namespace CodeAnalysisApp.Helpers
             var totalMethods = classToMethods.Sum(d => d.Value.Count);
             var methodsIndex = 0;
             
-            Log.Information("Total of {} docs, {} types and {} methods",docClassPairs.Count,totalClasses, totalMethods);
+            Log.Information("Total of {DocsCount} docs, {TypeCount} types and {MethodCount} methods",docClassPairs.Count,totalClasses, totalMethods);
             
             if(totalMethods == 0)
                 return;
@@ -205,7 +205,6 @@ namespace CodeAnalysisApp.Helpers
 
                 foreach (var method in docClassPair.Value.SelectMany(pair => classToMethods[pair]))
                 {
-
                     var asyncMethodNode = method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract).WithoutRegionTrivia();
                     editor.InsertAfter(method.Node, asyncMethodNode.LeadWithLineFeedIfNotPresent());
                 }
@@ -220,8 +219,254 @@ namespace CodeAnalysisApp.Helpers
             var traverser = new MutableSolutionTraverser(workspace);
             await traverser.ApplyRewriterAsync(m => new UseAsyncMethodRewriter(m));
             Log.Information("Done");
-            
-            
+
+
+            await DeleteUnusedAsyncifiedMethodsAsync(workspace, docClassPairs, classToMethods);
+        }
+
+        private static async Task DeleteUnusedAsyncifiedMethodsAsync(Workspace workspace, 
+                                                                List<KeyValuePair<Document, List<TypeSyntaxSemanticPair>>> typesWithAsyncifiedMethods,
+                                                                Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>> asyncifiedMethods)
+        {
+            var methodSymbolToSyncAsyncPair =
+                new Dictionary<IMethodSymbol, (DocumentId documentId, MethodSyntaxSemanticPair sync, MethodSyntaxSemanticPair
+                    async)>(SymbolEqualityComparer.Default);
+            var ignoredMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+
+            Log.Information("Collecting generated methods syntax references");
+            var solution = workspace.CurrentSolution;
+            foreach (var docClassPair in typesWithAsyncifiedMethods)
+            {
+                var document = solution.GetDocument(docClassPair.Key.Id);
+                var root = await document!.GetSyntaxRootAsync();
+                var model = await document.GetSemanticModelAsync();
+
+                if (root == null)
+                {
+                    Log.Error("Failed to retrieve syntax root for document {DocPath}", document.FilePath);
+                    continue;
+                }
+
+                if (model == null)
+                {
+                    Log.Error("Failed to retrieve semantic model for document {DocPath}", document.FilePath);
+                    continue;
+                }
+
+                foreach (var method in docClassPair.Value.SelectMany(pair => asyncifiedMethods[pair]))
+                {
+                    var methodSyntax = (MethodDeclarationSyntax)root
+                                                               .DescendantNodesAndSelf()
+                                                               .FirstOrDefault(
+                                                                    n => SyntaxFactory.AreEquivalent(method.Node, n));
+
+                    if (methodSyntax == null)
+                    {
+                        Log.Error("Failed to find syntax node for previously found method {Method} in document {DocPath}",
+                                  method.Node.Identifier.Text, document.FilePath);
+                        continue;
+                    }
+
+                    var methodSymbol = model.GetDeclaredSymbol(methodSyntax);
+
+                    if (methodSymbol == null)
+                    {
+                        Log.Error("Failed to find a symbol for previously found method {Method} in document {DocPath}",
+                                  method.Node.Identifier.Text, document.FilePath);
+                        continue;
+                    }
+
+                    var usages =
+                        (await SymbolFinder.FindCallersAsync(methodSymbol, solution)).Sum(
+                            c => c.Locations.Count());
+
+                    var nextSibling = methodSyntax.GetNextSibling();
+                    if (nextSibling is not MethodDeclarationSyntax asyncMethodSyntax)
+                    {
+                        Log.Error(
+                            "Expected next sibling of {Method} to be its async version (since its where tool inserted it) in document {DocPath}, found {ActualSibling}",
+                            method.Node.Identifier.Text, document.FilePath, nextSibling.GetType().ToString());
+                        continue;
+                    }
+
+                    var asyncMethodSymbol = model.GetDeclaredSymbol(asyncMethodSyntax);
+                    if (asyncMethodSymbol == null)
+                    {
+                        Log.Error("Failed to find a symbol for {Method} (async overload of {SyncMethod}) in document {DocPath}",
+                                  asyncMethodSyntax.Identifier.Text, methodSyntax.Identifier.Text, document.FilePath);
+                        continue;
+                    }
+
+                    var asyncUsages =
+                        (await SymbolFinder.FindCallersAsync(asyncMethodSymbol, solution)).Sum(
+                            c => c.Locations.Count());
+
+                    Log.Verbose(
+                        "Usage stats for {Sync} - {Usages} usages, for {Async} - {AsyncUsages} usages",
+                        methodSymbol.Name,
+                        usages,
+                        asyncMethodSymbol.Name,
+                        asyncUsages);
+
+                    var isImplementationOrOverride = methodSymbol.FindOverridenOrImplementedSymbol() != null;
+
+                    if (isImplementationOrOverride)
+                    {
+                        ignoredMethods.Add(methodSymbol);
+                        ignoredMethods.Add(asyncMethodSymbol);
+                    }
+
+                    if (!isImplementationOrOverride && asyncUsages == 0)
+                    {
+                        if (usages == 0)
+                        {
+                            Log.Warning(
+                                "Method {0} and generated async overload {1} in file {2} have no usages. " +
+                                "If {0} is used implicitly, make sure {1} is used instead and consider removing {0}. " +
+                                "If its not a part of library API and is not used explicitly, consider removing both {0} and {1} from source code.",
+                                methodSymbol.Name,
+                                asyncMethodSymbol.Name,
+                                document.FilePath);
+
+                            var shouldDelete = PromptUserToDelete(methodSymbol.Name);
+
+                            if (shouldDelete)
+                            {
+                                methodSymbolToSyncAsyncPair.Add(
+                                    methodSymbol,
+                                    (document.Id, (methodSyntax, methodSymbol), (asyncMethodSyntax, asyncMethodSymbol)));
+                            }
+                        }
+                        else
+                        {
+                            Log.Warning(
+                                "Async overload of method {0} ({1}) is not used. " +
+                                "This means the tool failed to automatically use {1} instead of {0} and user have to manually check {0}'s usages and, if possible, use {1}.",
+                                methodSymbol.Name,
+                                asyncMethodSymbol.Name);
+                        }
+                    }
+                    else
+                    {
+                        methodSymbolToSyncAsyncPair.Add(
+                            methodSymbol,
+                            (document.Id, (methodSyntax, methodSymbol), (asyncMethodSyntax, asyncMethodSymbol)));
+                    }
+                }
+            }
+
+
+            Log.Information("Scanning usages to determine which methods became obsolete and can be deleted");
+            var methodsToDelete = new Dictionary<MethodDeclarationSyntax, DocumentId>();
+
+            async Task AddMethodToDeleteAsync(SyntaxReference reference)
+            {
+                var document = solution.GetDocument(reference.SyntaxTree);
+
+                if (document == null)
+                {
+                    Log.Error("Failed to find document for syntax reference in {Path} {Span}", reference.SyntaxTree.FilePath,
+                              reference.Span.ToString());
+                    return;
+                }
+
+                if (await reference.GetSyntaxAsync() is not MethodDeclarationSyntax syntax)
+                {
+                    Log.Error("Failed to find method declaration syntax for syntax reference in {Path} {Span}",
+                              reference.SyntaxTree.FilePath, reference.Span.ToString());
+                    return;
+                }
+
+                methodsToDelete.Add(syntax, document.Id);
+            }
+
+            async Task TryAddMethodImplementationsToDeleteAsync(IMethodSymbol symbol)
+            {
+                foreach (var method in (await solution.FindOverridesAndImplementationsAsync(symbol)).OfType<IMethodSymbol>())
+                {
+                    if ((await SymbolFinder.FindCallersAsync(method, solution)).Any())
+                        continue;
+
+                    var syntaxReference = method.DeclaringSyntaxReferences.FirstOrDefault();
+
+                    if (syntaxReference == null)
+                        continue;
+
+                    await AddMethodToDeleteAsync(syntaxReference);
+
+                    await TryAddMethodImplementationsToDeleteAsync(method);
+                }
+            }
+
+
+            int methodsToDeletePrevCount;
+            do
+            {
+                methodsToDeletePrevCount = methodsToDelete.Count;
+
+                foreach (var pair in methodSymbolToSyncAsyncPair.Where(e => !ignoredMethods.Contains(e.Key)).ToList())
+                {
+                    var (documentId, syncMethod, asyncMethod) = pair.Value;
+                    var semanticModel = await solution.GetDocument(documentId).GetSemanticModelAsync();
+                    var nunitChecker = new NUnitTestAttributeChecker(semanticModel.Compilation);
+
+                    var syncUsages =
+                        (await SymbolFinder.FindCallersAsync(syncMethod.Symbol, solution)).ToList();
+                    var syncUsagesCount = syncUsages.Sum(c => c.Locations.Count());
+
+                    if (syncUsagesCount == 0 ||
+                        syncUsages.All(u => u.CallingSymbol is IMethodSymbol methodSymbol &&
+                                            nunitChecker.HasTestAttribute(methodSymbol)))
+                    {
+                        methodsToDelete.Add(syncMethod.Node, documentId);
+                        foreach (var usage in syncUsages)
+                        {
+                            await AddMethodToDeleteAsync(usage.CallingSymbol.DeclaringSyntaxReferences.First());
+                        }
+
+                        await TryAddMethodImplementationsToDeleteAsync(syncMethod.Symbol);
+
+                        methodSymbolToSyncAsyncPair.Remove(pair.Key);
+                    }
+                }
+            } while (methodsToDeletePrevCount != methodsToDelete.Count);
+
+            if (methodsToDelete.Any())
+            {
+                Log.Information("{MethodCount} methods to remove, deleting...", methodsToDelete.Count);
+                var solutionEditor = new SolutionEditor(solution);
+                foreach (var g in methodsToDelete.GroupBy(e => e.Value, p => p.Key))
+                {
+                    var editor = await solutionEditor.GetDocumentEditorAsync(g.Key);
+                    foreach (var syntax in g)
+                    {
+                        editor.RemoveNode(syntax, SyntaxRemoveOptions.KeepDirectives);
+                    }
+                }
+
+                workspace.TryApplyChanges(solutionEditor.GetChangedSolution());
+                Log.Information("Done");
+            }
+            else
+            {
+                Log.Information("No methods to delete");
+            }
+        }
+
+        private static bool PromptUserToDelete(string methodName)
+        {
+            while (true)
+            {
+                Console.Write($"Should the tool delete {methodName}? It might help to automatically detect and delete unused methods that {methodName} used, so prefer this to manual deletion (y/n) ");
+                var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
+                switch (answer)
+                {
+                    case "y":
+                        return true;
+                    case "n":
+                        return false;
+                }
+            }
         }
 
         private async Task<Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(

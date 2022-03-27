@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using CodeAnalysisApp.Utils;
+using Microsoft.CodeAnalysis;
 using Serilog;
 
 namespace CodeAnalysisApp.Helpers
@@ -16,15 +17,15 @@ namespace CodeAnalysisApp.Helpers
                 return;
 
             Log.Information(
-                "Cant automatically apply async overload {}in {}",
-                string.IsNullOrEmpty(methodWithAsyncOverload) ? "" : $"of {methodWithAsyncOverload} ",
+                "Cant automatically apply async overload {MethodWithAsyncOverload}in {LocationSpan}",
+                methodWithAsyncOverload.IsNullOrEmpty() ? "" : $"of {methodWithAsyncOverload} ",
                 span);
         }
 
         public static void CantAsyncifyInOutRefMethod(string methodName, FileLinePositionSpan span)
         {
             Log.Information(
-                "Cant automatically convert method {} in {}: some of arguments have \"in\", \"out\", or \"ref\" modifier",
+                "Cant automatically convert method {Method} in {Location}: some of arguments have \"in\", \"out\", or \"ref\" modifier",
                 methodName,
                 span);
         }

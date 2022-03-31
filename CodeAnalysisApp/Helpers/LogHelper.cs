@@ -16,7 +16,7 @@ namespace CodeAnalysisApp.Helpers
             if (!span.IsValid)
                 return;
 
-            Log.Information(
+            Log.Verbose(
                 "Cant automatically apply async overload {MethodWithAsyncOverload}in {LocationSpan}",
                 methodWithAsyncOverload.IsNullOrEmpty() ? "" : $"of {methodWithAsyncOverload} ",
                 span);
@@ -24,7 +24,7 @@ namespace CodeAnalysisApp.Helpers
 
         public static void CantAsyncifyInOutRefMethod(string methodName, FileLinePositionSpan span)
         {
-            Log.Information(
+            Log.Warning(
                 "Cant automatically convert method {Method} in {Location}: some of arguments have \"in\", \"out\", or \"ref\" modifier",
                 methodName,
                 span);

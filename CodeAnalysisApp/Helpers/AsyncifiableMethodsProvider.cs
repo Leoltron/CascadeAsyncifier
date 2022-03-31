@@ -69,30 +69,12 @@ namespace CodeAnalysisApp.Helpers
 
             if (pairs.Any())
             {
-                Debug.WriteLine(typeSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
-                Debug.WriteLine(string.Concat(pairs.Select(p => $"\t{p}\n")));
+               //Debug.WriteLine(typeSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
+               //Debug.WriteLine(string.Concat(pairs.Select(p => $"\t{p}\n")));
             }
         }
 
         private static IEnumerable<INamedTypeSymbol> GetAllTypes(Compilation compilation) =>
-            GetAllTypes(compilation.GlobalNamespace);
-
-        private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol @namespace)
-        {
-            foreach (var type in @namespace.GetTypeMembers())
-            foreach (var nestedType in GetNestedTypes(type))
-                yield return nestedType;
-
-            foreach (var nestedNamespace in @namespace.GetNamespaceMembers())
-            foreach (var type in GetAllTypes(nestedNamespace))
-                yield return type;
-        }
-
-        private static IEnumerable<INamedTypeSymbol> GetNestedTypes(INamedTypeSymbol type)
-        {
-            yield return type;
-            foreach (var nestedType in type.GetTypeMembers().SelectMany(GetNestedTypes))
-                yield return nestedType;
-        }
+            compilation.GlobalNamespace.GetAllTypes();
     }
 }

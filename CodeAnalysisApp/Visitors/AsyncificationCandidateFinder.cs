@@ -19,7 +19,7 @@ namespace CodeAnalysisApp.Visitors
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
         private readonly AwaitableChecker awaitableChecker;
-        private readonly NUnitTestAttributeChecker testAttributeChecker;
+        private readonly TestAttributeChecker testAttributeChecker;
         private readonly HashSet<MethodDeclarationSyntax> ignoredMethods = new();
         private readonly HashSet<MethodDeclarationSyntax> unreportedInOutRefMethods = new();
 
@@ -30,7 +30,7 @@ namespace CodeAnalysisApp.Visitors
             this.model = model;
             this.matcher = matcher;
             this.awaitableChecker = new AwaitableChecker(model.Compilation);
-            testAttributeChecker = new NUnitTestAttributeChecker(model.Compilation);
+            testAttributeChecker = TestAttributeChecker.GetInstance(model.Compilation);
         }
 
         public override void VisitMethodDeclaration(MethodDeclarationSyntax node)

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Utils;
@@ -13,23 +12,13 @@ namespace CodeAnalysisApp.Rewriters
     {
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
-        private readonly NUnitTestAttributeChecker testAttributeChecker;
-        private static readonly ConcurrentDictionary<Compilation, AsyncifiableMethodsMatcher> matchers = new();
-
+        private readonly TestAttributeChecker testAttributeChecker;
 
         public UseAsyncMethodRewriter(SemanticModel model)
         {
             this.model = model;
-            testAttributeChecker = new NUnitTestAttributeChecker(model.Compilation);
-            matcher = matchers.GetOrAdd(
-                model.Compilation,
-                c =>
-                {
-                    var newMatcher = new AsyncifiableMethodsMatcher(c);
-                    newMatcher.FillAsyncifiableMethodsFromCompilation();
-
-                    return newMatcher;
-                });
+            testAttributeChecker = TestAttributeChecker.GetInstance(model.Compilation);
+            matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
         }
 
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CodeAnalysisApp.Extensions;
+using CodeAnalysisApp.Helpers.UnusedMethods;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
 using CodeAnalysisApp.Visitors;
@@ -31,9 +32,8 @@ namespace CodeAnalysisApp.Helpers
             var matchers = new Dictionary<ProjectId, AsyncifiableMethodsMatcher>();
             foreach (var project in solution.Projects)
             {
-                var matcher = new AsyncifiableMethodsMatcher(await project.GetCompilationAsync());
-                matcher.FillAsyncifiableMethodsFromCompilation();
-                matchers[project.Id] = matcher;
+                var compilation = await project.GetCompilationAsync();
+                matchers[project.Id] = AsyncifiableMethodsMatcher.GetInstance(compilation);
             }
             
             Log.Information("Done");
@@ -205,7 +205,7 @@ namespace CodeAnalysisApp.Helpers
 
                 foreach (var method in docClassPair.Value.SelectMany(pair => classToMethods[pair]))
                 {
-                    var asyncMethodNode = method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract).WithoutRegionTrivia();
+                    var asyncMethodNode = method.Node.WithAsyncSignatureAndName(!method.Symbol.IsAbstract, method.Symbol.ContainingNamespace?.Name == "Task").WithoutRegionTrivia();
                     editor.InsertAfter(method.Node, asyncMethodNode.LeadWithLineFeedIfNotPresent());
                 }
                 editor.ReplaceNode(root, (n, gen) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
@@ -228,9 +228,24 @@ namespace CodeAnalysisApp.Helpers
                                                                 List<KeyValuePair<Document, List<TypeSyntaxSemanticPair>>> typesWithAsyncifiedMethods,
                                                                 Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>> asyncifiedMethods)
         {
+            Log.Information("Scanning usages to determine which methods became obsolete and can be deleted");
+            
+            var methodsToDelete = new Dictionary<MethodDeclarationSyntax, DocumentId>();
+            var methodSymbolsToDelete = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+
+            void AddMethodToDelete(IMethodSymbol symbol, MethodDeclarationSyntax syntax, DocumentId documentId)
+            {
+                if (methodSymbolsToDelete.Add(symbol))
+                {
+                    methodsToDelete.Add(syntax, documentId);
+                }
+            }
+            
             var methodSymbolToSyncAsyncPair =
                 new Dictionary<IMethodSymbol, (DocumentId documentId, MethodSyntaxSemanticPair sync, MethodSyntaxSemanticPair
                     async)>(SymbolEqualityComparer.Default);
+            var pairsToPromptDeletion =
+                new List<(Document document, MethodSyntaxSemanticPair sync, MethodSyntaxSemanticPair async)>();
             var ignoredMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
 
             Log.Information("Collecting generated methods syntax references");
@@ -253,6 +268,9 @@ namespace CodeAnalysisApp.Helpers
                     continue;
                 }
 
+                var undeletableMethodChecker = new UndeletableSyncMethodChecker(model.Compilation);
+                var deletableMethodChecker = DeletableSyncMethodsChecker.GetInstance(model.Compilation);
+
                 foreach (var method in docClassPair.Value.SelectMany(pair => asyncifiedMethods[pair]))
                 {
                     var methodSyntax = (MethodDeclarationSyntax)root
@@ -273,6 +291,17 @@ namespace CodeAnalysisApp.Helpers
                     {
                         Log.Error("Failed to find a symbol for previously found method {Method} in document {DocPath}",
                                   method.Node.Identifier.Text, document.FilePath);
+                        continue;
+                    }
+
+                    if (undeletableMethodChecker.ShouldKeepMethod(methodSymbol))
+                    {
+                        continue;
+                    }
+
+                    if (deletableMethodChecker.CanDeleteSyncMethodWithAsyncOverload(methodSymbol))
+                    {
+                        await AddMethodToDeleteAsync(methodSymbol, methodSymbol.DeclaringSyntaxReferences.First());
                         continue;
                     }
 
@@ -320,30 +349,17 @@ namespace CodeAnalysisApp.Helpers
                     {
                         if (usages == 0)
                         {
-                            Log.Warning(
-                                "Method {0} and generated async overload {1} in file {2} have no usages. " +
-                                "If {0} is used implicitly, make sure {1} is used instead and consider removing {0}. " +
-                                "If its not a part of library API and is not used explicitly, consider removing both {0} and {1} from source code.",
-                                methodSymbol.Name,
-                                asyncMethodSymbol.Name,
-                                document.FilePath);
-
-                            var shouldDelete = PromptUserToDelete(methodSymbol.Name);
-
-                            if (shouldDelete)
-                            {
-                                methodSymbolToSyncAsyncPair.Add(
-                                    methodSymbol,
-                                    (document.Id, (methodSyntax, methodSymbol), (asyncMethodSyntax, asyncMethodSymbol)));
-                            }
+                            pairsToPromptDeletion.Add(
+                                (document, (methodSyntax, methodSymbol), (asyncMethodSyntax, asyncMethodSymbol)));
                         }
                         else
                         {
                             Log.Warning(
-                                "Async overload of method {0} ({1}) is not used. " +
+                                "Async overload of method {2}.{0} ({1}) is not used. " +
                                 "This means the tool failed to automatically use {1} instead of {0} and user have to manually check {0}'s usages and, if possible, use {1}.",
                                 methodSymbol.Name,
-                                asyncMethodSymbol.Name);
+                                asyncMethodSymbol.Name,
+                                methodSymbol.ContainingType.Name);
                         }
                     }
                     else
@@ -355,11 +371,7 @@ namespace CodeAnalysisApp.Helpers
                 }
             }
 
-
-            Log.Information("Scanning usages to determine which methods became obsolete and can be deleted");
-            var methodsToDelete = new Dictionary<MethodDeclarationSyntax, DocumentId>();
-
-            async Task AddMethodToDeleteAsync(SyntaxReference reference)
+            async Task AddMethodToDeleteAsync(IMethodSymbol symbol, SyntaxReference reference)
             {
                 var document = solution.GetDocument(reference.SyntaxTree);
 
@@ -377,14 +389,41 @@ namespace CodeAnalysisApp.Helpers
                     return;
                 }
 
-                methodsToDelete.Add(syntax, document.Id);
+                AddMethodToDelete(symbol, syntax, document.Id);
             }
 
             async Task TryAddMethodImplementationsToDeleteAsync(IMethodSymbol symbol)
             {
                 foreach (var method in (await solution.FindOverridesAndImplementationsAsync(symbol)).OfType<IMethodSymbol>())
                 {
-                    if ((await SymbolFinder.FindCallersAsync(method, solution)).Any())
+                    var callers = (await SymbolFinder.FindCallersAsync(method, solution)).ToList();
+
+                    if (!callers.All(
+                            c =>
+                            {
+                                if (c.CallingSymbol is not IMethodSymbol callingMethod)
+                                {
+                                    return false;
+                                }
+
+                                if (methodSymbolsToDelete.Contains(callingMethod))
+                                {
+                                    return true;
+                                }
+
+                                var sourceLocation = c.Locations.FirstOrDefault(l => l.IsInSource);
+                                var document = solution.GetDocument(sourceLocation?.SourceTree);
+
+                                if (document == null || !document.TryGetSemanticModel(out var model))
+                                {
+                                    return false;
+                                }
+
+                                var checker = TestAttributeChecker.GetInstance(model.Compilation);
+
+                                return checker.HasTestAttribute(callingMethod);
+
+                            }))
                         continue;
 
                     var syntaxReference = method.DeclaringSyntaxReferences.FirstOrDefault();
@@ -392,9 +431,38 @@ namespace CodeAnalysisApp.Helpers
                     if (syntaxReference == null)
                         continue;
 
-                    await AddMethodToDeleteAsync(syntaxReference);
+                    await AddMethodToDeleteAsync(method, syntaxReference);
 
                     await TryAddMethodImplementationsToDeleteAsync(method);
+                }
+            }
+
+            if (pairsToPromptDeletion.Any())
+            {
+                Log.Warning(
+                    "Some of methods are not used along with their new async overloads. Prompting user to decide their fate");
+                foreach (var (document, syncPair, asyncPair) in pairsToPromptDeletion)
+                {
+                    Log.Warning("Prompting about {Method} in {Path}", syncPair.Symbol.Name, document.FilePath);/*
+                    Log.Warning(
+                        "Method {0} and generated async overload {1} in file {2} have no usages. " +
+                        "If {0} is used implicitly, make sure {1} is used instead and consider removing {0}. " +
+                        "If its not a part of library API and is not used explicitly, consider removing both {0} and {1} from source code.",
+                        syncPair.Symbol.Name,
+                        asyncPair.Symbol.Name,
+                        document.FilePath);*/
+
+                    var shouldDelete = PromptUserToDelete(syncPair.Symbol.Name);
+
+                    if (shouldDelete)
+                    {
+                        Log.Warning("{Path} - {Method} will be deleted", document.FilePath, syncPair.Symbol.Name);
+                        methodSymbolToSyncAsyncPair.Add(syncPair.Symbol, (document.Id, syncPair, asyncPair));
+                    }
+                    else
+                    {
+                        Log.Warning("{Path} - {Method} is ignored", document.FilePath, syncPair.Symbol.Name);
+                    }
                 }
             }
 
@@ -408,20 +476,22 @@ namespace CodeAnalysisApp.Helpers
                 {
                     var (documentId, syncMethod, asyncMethod) = pair.Value;
                     var semanticModel = await solution.GetDocument(documentId).GetSemanticModelAsync();
-                    var nunitChecker = new NUnitTestAttributeChecker(semanticModel.Compilation);
+                    var nunitChecker = TestAttributeChecker.GetInstance(semanticModel.Compilation);
 
                     var syncUsages =
                         (await SymbolFinder.FindCallersAsync(syncMethod.Symbol, solution)).ToList();
                     var syncUsagesCount = syncUsages.Sum(c => c.Locations.Count());
 
-                    if (syncUsagesCount == 0 ||
-                        syncUsages.All(u => u.CallingSymbol is IMethodSymbol methodSymbol &&
-                                            nunitChecker.HasTestAttribute(methodSymbol)))
+                    if (syncUsages.All(u => u.CallingSymbol is IMethodSymbol methodSymbol &&
+                                            (nunitChecker.HasTestAttribute(methodSymbol) || methodSymbolsToDelete.Contains(methodSymbol))
+                                            ))
                     {
-                        methodsToDelete.Add(syncMethod.Node, documentId);
+                        
+                        AddMethodToDelete(syncMethod.Symbol, syncMethod.Node, documentId);
                         foreach (var usage in syncUsages)
                         {
-                            await AddMethodToDeleteAsync(usage.CallingSymbol.DeclaringSyntaxReferences.First());
+                            var usageCallingSymbol = (IMethodSymbol) usage.CallingSymbol;
+                            await AddMethodToDeleteAsync(usageCallingSymbol, usageCallingSymbol.DeclaringSyntaxReferences.First());
                         }
 
                         await TryAddMethodImplementationsToDeleteAsync(syncMethod.Symbol);

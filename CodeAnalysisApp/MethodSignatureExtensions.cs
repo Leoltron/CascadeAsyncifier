@@ -10,7 +10,8 @@ namespace CodeAnalysisApp
     public static class MethodSignatureExtensions
     {
         public static MethodDeclarationSyntax WithAsyncSignatureAndName(this MethodDeclarationSyntax methodDeclaration,
-                                                                        bool addAsyncKeyword = true)
+                                                                        bool addAsyncKeyword = true,
+                                                                        bool useTaskNamespace = false)
         {
             var asyncMethod = methodDeclaration
                .WithIdentifier(Identifier(methodDeclaration.Identifier.Text + "Async"));
@@ -19,17 +20,19 @@ namespace CodeAnalysisApp
                 asyncMethod = asyncMethod.AddAsyncModifier();
 
             return asyncMethod
-               .WithReturnType(AsyncifyReturnType(methodDeclaration));
+               .WithReturnType(AsyncifyReturnType(methodDeclaration, useTaskNamespace));
         }
 
-        private static TypeSyntax AsyncifyReturnType(MethodDeclarationSyntax node)
+        private static TypeSyntax AsyncifyReturnType(MethodDeclarationSyntax node, bool useTaskNamespace)
         {
             var returnType = node.ReturnType;
 
             if (node.ReturnsVoid())
                 return IdentifierName("Task").WithTriviaFrom(returnType);
             
-            return GenericName(Identifier("Task"))
+            var identifierText = useTaskNamespace ? "System.Threading.Tasks.Task" : "Task";
+            
+            return GenericName(Identifier(identifierText))
                 .WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(returnType.WithoutTrivia())))
                 .WithTriviaFrom(returnType);
         }

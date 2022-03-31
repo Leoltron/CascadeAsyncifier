@@ -47,5 +47,38 @@ namespace CodeAnalysisApp.Extensions
 
             return true;
         } 
+        
+        public static bool InheritsFromOrEquals(this ITypeSymbol type, ITypeSymbol baseType)
+        {
+            return type.GetBaseTypesAndThis().Any(t => SymbolEqualityComparer.Default.Equals(t, baseType));
+        }
+        
+        public static IEnumerable<ITypeSymbol> GetBaseTypesAndThis(this ITypeSymbol type)
+        {
+            var current = type;
+            while (current != null)
+            {
+                yield return current;
+                current = current.BaseType;
+            }
+        }
+
+        public static IEnumerable<INamedTypeSymbol> GetAllTypes(this INamespaceSymbol @namespace)
+        {
+            foreach (var type in @namespace.GetTypeMembers())
+            foreach (var nestedType in GetNestedTypes(type))
+                yield return nestedType;
+
+            foreach (var nestedNamespace in @namespace.GetNamespaceMembers())
+            foreach (var type in GetAllTypes(nestedNamespace))
+                yield return type;
+        }
+
+        public static IEnumerable<INamedTypeSymbol> GetNestedTypes(this INamedTypeSymbol type)
+        {
+            yield return type;
+            foreach (var nestedType in type.GetTypeMembers().SelectMany(GetNestedTypes))
+                yield return nestedType;
+        }
     }
 }

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
+using CodeAnalysisApp.Utils;
 using Serilog;
 
 namespace CodeAnalysisApp
@@ -33,7 +34,9 @@ namespace CodeAnalysisApp
 
         static async Task Main(string[] args)
         {
-            SetupLog();
+            var solutionPath = args[0];
+            
+            SetupLog(solutionPath);
 
             RegisterVSMSBuild();
 
@@ -42,7 +45,6 @@ namespace CodeAnalysisApp
             // Print message for WorkspaceFailed event to help diagnosing project load failures.
             workspace.WorkspaceFailed += (o, e) => Log.Warning(e.Diagnostic.Message);
 
-            var solutionPath = args[0];
             Log.Information("Loading solution '{SolutionPath}'", solutionPath);
 
             // Attach progress reporter so we print projects as they are loaded.
@@ -156,9 +158,17 @@ namespace CodeAnalysisApp
             }
         }
 
-        private static void SetupLog()
+        private static void SetupLog(string solutionPath)
         {
-            Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
+            var solutionFileName = Path.GetFileName(solutionPath);
+
+            var loggerConfiguration = new LoggerConfiguration().WriteTo.Console();
+            if (!solutionPath.IsNullOrEmpty())
+            {
+                loggerConfiguration.WriteTo.File($"{DateTime.Now:yyyy-MM-dd_HH-mm-ss_}{solutionFileName}.log");
+            }
+            
+            Log.Logger = loggerConfiguration.CreateLogger();
         }
     }
 }

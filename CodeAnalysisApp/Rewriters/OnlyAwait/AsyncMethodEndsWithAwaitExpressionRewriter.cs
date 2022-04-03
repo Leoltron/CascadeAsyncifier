@@ -18,7 +18,7 @@ namespace CodeAnalysisApp.Rewriters
         public AsyncMethodEndsWithAwaitExpressionRewriter(SemanticModel model)
         {
             this.model = model;
-            taskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task).FullName);
+            taskSymbol = model.Compilation.GetTypeByMetadataName(typeof(Task).FullName!);
         }
         
         private bool FoundReturn

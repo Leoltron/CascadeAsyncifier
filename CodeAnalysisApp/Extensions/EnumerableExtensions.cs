@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CodeAnalysisApp.Extensions
 {
@@ -39,7 +40,7 @@ namespace CodeAnalysisApp.Extensions
 
             foreach (var element in source)
             {
-                if(filter(element))
+                if (filter(element))
                     filtered.Add(element);
                 else
                     unfiltered.Add(element);
@@ -47,5 +48,9 @@ namespace CodeAnalysisApp.Extensions
 
             return (filtered, unfiltered);
         }
+
+        public static Dictionary<TKey, TValue> ToDictionary<TKey, TValue>(
+            this IEnumerable<KeyValuePair<TKey, TValue>> source) =>
+            source.ToDictionary(pair => pair.Key, pair => pair.Value);
     }
 }

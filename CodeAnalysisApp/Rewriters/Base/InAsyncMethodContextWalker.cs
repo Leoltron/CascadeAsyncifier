@@ -12,57 +12,57 @@ namespace CodeAnalysisApp.Rewriters
 
         public override void VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
         {
-            var OldInAsyncMethod = InAsyncMethod;
-            var OldCurrentMethod = CurrentMethod;
+            var oldInAsyncMethod = InAsyncMethod;
+            var oldCurrentMethod = CurrentMethod;
             InAsyncMethod = !node.AsyncKeyword.IsEmpty();
             CurrentMethod = null;
             base.VisitSimpleLambdaExpression(node);
-            InAsyncMethod = OldInAsyncMethod;
-            CurrentMethod = OldCurrentMethod;
+            InAsyncMethod = oldInAsyncMethod;
+            CurrentMethod = oldCurrentMethod;
         }
 
         public override void VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
         {
-            var OldInAsyncMethod = InAsyncMethod;
-            var OldCurrentMethod = CurrentMethod;
+            var oldInAsyncMethod = InAsyncMethod;
+            var oldCurrentMethod = CurrentMethod;
             InAsyncMethod = !node.AsyncKeyword.IsEmpty();
             CurrentMethod = null;
             base.VisitParenthesizedLambdaExpression(node);
-            InAsyncMethod = OldInAsyncMethod;
-            CurrentMethod = OldCurrentMethod;
+            InAsyncMethod = oldInAsyncMethod;
+            CurrentMethod = oldCurrentMethod;
         }
 
         public override void VisitAnonymousMethodExpression(AnonymousMethodExpressionSyntax node)
         {
-            var OldInAsyncMethod = InAsyncMethod;
-            var OldCurrentMethod = CurrentMethod;
+            var oldInAsyncMethod = InAsyncMethod;
+            var oldCurrentMethod = CurrentMethod;
             InAsyncMethod = !node.AsyncKeyword.IsEmpty();
             CurrentMethod = null;
             base.VisitAnonymousMethodExpression(node);
-            InAsyncMethod = OldInAsyncMethod;
-            CurrentMethod = OldCurrentMethod;
+            InAsyncMethod = oldInAsyncMethod;
+            CurrentMethod = oldCurrentMethod;
         }
 
         public override void VisitLocalFunctionStatement(LocalFunctionStatementSyntax node)
         {
-            var OldInAsyncMethod = InAsyncMethod;
-            var OldCurrentMethod = CurrentMethod;
+            var oldInAsyncMethod = InAsyncMethod;
+            var oldCurrentMethod = CurrentMethod;
             InAsyncMethod = node.IsAsync();
             CurrentMethod = null;
             base.VisitLocalFunctionStatement(node);
-            InAsyncMethod = OldInAsyncMethod;
-            CurrentMethod = OldCurrentMethod;
+            InAsyncMethod = oldInAsyncMethod;
+            CurrentMethod = oldCurrentMethod;
         }
 
         public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            var OldInAsyncMethod = InAsyncMethod;
-            var OldCurrentMethod = CurrentMethod;
+            var oldInAsyncMethod = InAsyncMethod;
+            var oldCurrentMethod = CurrentMethod;
             InAsyncMethod = node.IsAsync();
             CurrentMethod = node;
             base.VisitMethodDeclaration(node);
-            InAsyncMethod = OldInAsyncMethod;
-            CurrentMethod = OldCurrentMethod;
+            InAsyncMethod = oldInAsyncMethod;
+            CurrentMethod = oldCurrentMethod;
         }
     }
 }

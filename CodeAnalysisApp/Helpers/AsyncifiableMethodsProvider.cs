@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using CodeAnalysisApp.Extensions;
 using CodeAnalysisApp.Helpers.SyncAsyncMethodPairProviders;
@@ -34,7 +33,6 @@ namespace CodeAnalysisApp.Helpers
                 typesWithAsyncMethodPairs.GetOrDefault(typeSymbol.GetFullName(), new List<(string, string)>())
                                          .ToDictionary(p => p.Item1, p => p.Item2);
             
-            var pairs = new List<string>();
             var members = typeSymbol.GetMembers().OfType<IMethodSymbol>().ToList();
             var (asyncMembers, syncMembers) = members.SplitByFilter(m => m.IsAsync || m.Name.EndsWith("Async"));
             foreach (var member in syncMembers)
@@ -48,7 +46,6 @@ namespace CodeAnalysisApp.Helpers
                         
                         var pair = new SyncAsyncMethodSymbolPair(member, asyncMethod);
                         yield return pair;
-                        pairs.Add(pair.ToString());
                         break;
                     } 
                     continue;
@@ -56,21 +53,13 @@ namespace CodeAnalysisApp.Helpers
 
                 var matchingAsyncName = member.Name + "Async";
                 var matchingAsyncMethod = asyncMembers
-                                         .Where(am => am.Name == matchingAsyncName)
-                                         .FirstOrDefault(a => methodCompareHelper.IsAsyncVersionOf(member, a));
+                                         .FirstOrDefault(a =>  a.Name == matchingAsyncName && methodCompareHelper.IsAsyncVersionOf(member, a));
 
                 if (matchingAsyncMethod != null)
                 {
                     var pair = new SyncAsyncMethodSymbolPair(member, matchingAsyncMethod);
                     yield return pair;
-                    pairs.Add(pair.ToString());
                 }
-            }
-
-            if (pairs.Any())
-            {
-               //Debug.WriteLine(typeSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
-               //Debug.WriteLine(string.Concat(pairs.Select(p => $"\t{p}\n")));
             }
         }
 

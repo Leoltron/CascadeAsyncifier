@@ -133,5 +133,25 @@ namespace CodeAnalysisApp.Extensions
 
             return null;
         }
+        
+        public static bool IsInvocation(this SyntaxNode node)
+        {
+            while (node != null)
+            {
+                switch (node.Kind())
+                {
+                    case SyntaxKind.Argument:
+                    case SyntaxKind.CoalesceAssignmentExpression:
+                    case SyntaxKind.SimpleAssignmentExpression:
+                        return false;
+                    case SyntaxKind.InvocationExpression:
+                        return true;
+                }
+
+                node = node.Parent;
+            }
+
+            return false;
+        }
     }
 }

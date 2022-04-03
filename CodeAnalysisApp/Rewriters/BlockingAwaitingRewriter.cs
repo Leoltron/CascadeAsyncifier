@@ -17,8 +17,7 @@ namespace CodeAnalysisApp.Rewriters
             awaitableSyntaxChecker = new AwaitableSyntaxChecker(semanticModel);
         }
 
-        public override SyntaxNode 
-            VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+        public override SyntaxNode VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
         {
             if (!InAsyncMethod)
                 return base.VisitMemberAccessExpression(node);
@@ -32,51 +31,81 @@ namespace CodeAnalysisApp.Rewriters
             return base.VisitMemberAccessExpression(node);
         }
 
-        public override SyntaxNode 
-            VisitInvocationExpression(InvocationExpressionSyntax node)
+        public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            if (!InAsyncMethod ||
-                node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
+            if (!InAsyncMethod || node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
                 return base.VisitInvocationExpression(node);
 
-            var shouldBeParenthesized = node.Parent is MemberAccessExpressionSyntax ||
-                                        node.Parent is ConditionalAccessExpressionSyntax;
+            var shouldBeParenthesized = node.Parent is
+                MemberAccessExpressionSyntax or ConditionalAccessExpressionSyntax;
 
             var identifierText = memberAccessNode.Name.Identifier.Text;
             var memberAccessExpression = memberAccessNode.Expression;
-            if (identifierText == "Wait")
+
+            ExpressionSyntax awaitableExpression;
+            if (IsWait(identifierText, memberAccessExpression))
             {
-                var expType = ModelExtensions.GetTypeInfo(semanticModel, memberAccessExpression).Type;
-
-                if (awaitableSyntaxChecker.IsTask(expType))
-                {
-                    var expression = SyntaxNodesExtensions.ToAwaitExpression(memberAccessExpression, node);
-
-                    if(shouldBeParenthesized)
-                        return SyntaxFactory.ParenthesizedExpression(expression);
-
-                    return expression;
-                }
+                awaitableExpression = memberAccessExpression;
             }
-            else if (identifierText == "GetResult")
+            else if (IsGetAwaiterGetResult(identifierText, memberAccessExpression, out var innerMemberAccessNode))
             {
-                if (memberAccessExpression is InvocationExpressionSyntax
-                    {
-                        Expression: MemberAccessExpressionSyntax innerMemberAccessNode
-                    } &&
-                    innerMemberAccessNode.Name.Identifier.Text == "GetAwaiter" &&
-                    awaitableSyntaxChecker.IsTypeAwaitable(innerMemberAccessNode.Expression))
-                {
-                    var expression = SyntaxNodesExtensions.ToAwaitExpression(innerMemberAccessNode.Expression, node);
-
-                    if(shouldBeParenthesized)
-                        return SyntaxFactory.ParenthesizedExpression(expression);
-                    
-                    return expression;
-                }
+                awaitableExpression = innerMemberAccessNode.Expression;
+            }
+            else
+            {
+                return base.VisitInvocationExpression(node);
             }
 
-            return base.VisitInvocationExpression(node);
+            var expression = SyntaxNodesExtensions.ToAwaitExpression(awaitableExpression, node);
+
+            if (shouldBeParenthesized)
+                return SyntaxFactory.ParenthesizedExpression(expression);
+
+            return expression;
+        }
+
+        private bool IsWait(string text, SyntaxNode node)
+        {
+            if (text != "Wait")
+            {
+                return false;
+            }
+
+            var nodeType = semanticModel.GetTypeInfo(node).Type;
+
+            return awaitableSyntaxChecker.IsTask(nodeType);
+        }
+
+        private bool IsGetAwaiterGetResult(string text, ExpressionSyntax syntax,
+                                           out MemberAccessExpressionSyntax innerAccessor)
+        {
+            innerAccessor = null;
+
+            if (text != "GetResult")
+            {
+                return false;
+            }
+
+            if (syntax is not InvocationExpressionSyntax
+                {
+                    Expression: MemberAccessExpressionSyntax memberAccessSyntax
+                })
+            {
+                return false;
+            }
+
+            if (memberAccessSyntax.Name.Identifier.Text != "GetAwaiter")
+            {
+                return false;
+            }
+
+            if (!awaitableSyntaxChecker.IsTypeAwaitable(memberAccessSyntax.Expression))
+            {
+                return false;
+            }
+
+            innerAccessor = memberAccessSyntax;
+            return true;
         }
     }
 }

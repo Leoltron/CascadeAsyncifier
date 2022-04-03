@@ -26,7 +26,7 @@ namespace CodeAnalysisApp.Rewriters
         {
             var visitedNode = (MethodDeclarationSyntax)base.VisitMethodDeclaration(node);
 
-            if (!ContainsAsyncVoid(visitedNode))
+            if (visitedNode == null || !ContainsAsyncVoid(visitedNode))
                 return visitedNode;
 
             addTaskUsingIfNeeded = true;

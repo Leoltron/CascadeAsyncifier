@@ -2,7 +2,7 @@
 
 namespace CodeAnalysisApp.Helpers
 {
-    public class AsyncifiableMethodsUnusualNamesProvider
+    public static class AsyncifiableMethodsUnusualNamesProvider
     {
         public static IEnumerable<(string typeName, string syncName, string asyncName)> Provide()
         {

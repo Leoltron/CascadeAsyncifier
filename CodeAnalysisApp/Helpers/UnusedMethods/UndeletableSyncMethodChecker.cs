@@ -1,5 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using CodeAnalysisApp.Utils;
+﻿using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 
 namespace CodeAnalysisApp.Helpers.UnusedMethods

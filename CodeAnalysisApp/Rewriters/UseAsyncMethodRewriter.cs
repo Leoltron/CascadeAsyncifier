@@ -12,12 +12,11 @@ namespace CodeAnalysisApp.Rewriters
     {
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
-        private readonly TestAttributeChecker testAttributeChecker;
 
         public UseAsyncMethodRewriter(SemanticModel model)
         {
             this.model = model;
-            testAttributeChecker = TestAttributeChecker.GetInstance(model.Compilation);
+            TestAttributeChecker.GetInstance(model.Compilation);
             matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
         }
 
@@ -27,13 +26,6 @@ namespace CodeAnalysisApp.Rewriters
 
             if (!InAsyncMethod || visitedNode == null || node.IsInNoAwaitBlock())
                 return visitedNode;
-
-            /*if (CurrentMethod != null &&
-                model.GetDeclaredSymbol(CurrentMethod) is IMethodSymbol methodSymbol &&
-                testAttributeChecker.HasTestAttribute(methodSymbol))
-            {
-                return visitedNode;
-            }*/
 
             if (ModelExtensions.GetSymbolInfo(model, node).Symbol is not IMethodSymbol symbol)
                 return visitedNode;

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace CodeAnalysisApp.Utils
+namespace CodeAnalysisApp.Extensions
 {
     public static class DictionaryExtensions
     {

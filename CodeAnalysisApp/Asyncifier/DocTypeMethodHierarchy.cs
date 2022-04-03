@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 
-namespace CodeAnalysisApp.Helpers
+namespace CodeAnalysisApp.Asyncifier
 {
     public class DocTypeMethodHierarchy
     {

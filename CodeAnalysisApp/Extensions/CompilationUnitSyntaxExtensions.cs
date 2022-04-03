@@ -1,7 +1,7 @@
 using System.Linq;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace CodeAnalysisApp.Utils
+namespace CodeAnalysisApp.Extensions
 {
     public static class CompilationUnitSyntaxExtensions
     {

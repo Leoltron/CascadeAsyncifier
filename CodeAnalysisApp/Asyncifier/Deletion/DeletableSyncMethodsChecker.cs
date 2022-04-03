@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using CodeAnalysisApp.Extensions;
 using Microsoft.CodeAnalysis;
 
-namespace CodeAnalysisApp.Helpers.UnusedMethods
+namespace CodeAnalysisApp.Asyncifier.Deletion
 {
     public class DeletableSyncMethodsChecker
     {

@@ -1,7 +1,7 @@
 ﻿using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 
-namespace CodeAnalysisApp.Helpers.UnusedMethods
+namespace CodeAnalysisApp.Asyncifier.Deletion
 {
     public class UndeletableSyncMethodChecker
     {

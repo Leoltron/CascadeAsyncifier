@@ -4,19 +4,19 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using CodeAnalysisApp.Asyncifier.Deletion;
 using CodeAnalysisApp.Extensions;
-using CodeAnalysisApp.Helpers.UnusedMethods;
+using CodeAnalysisApp.Helpers;
 using CodeAnalysisApp.Rewriters;
 using CodeAnalysisApp.Utils;
 using CodeAnalysisApp.Visitors;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Serilog;
 
-namespace CodeAnalysisApp.Helpers
+namespace CodeAnalysisApp.Asyncifier
 {
     public class CascadeAsyncifier
     {
@@ -58,16 +58,14 @@ namespace CodeAnalysisApp.Helpers
             var slnEditor = new SolutionEditor(workspace.CurrentSolution);
             var totalMethods = docTypeMethodHierarchy.TypeToMethods.Sum(d => d.Value.Count);
             var methodsIndex = 0;
-            foreach (var docClassPair in docTypeMethodHierarchy.DocsToTypes)
+            foreach (var (document, pairs) in docTypeMethodHierarchy.DocsToTypes)
             {
                 Console.Write($"\r{(double)methodsIndex / totalMethods:P} ");
                 methodsIndex++;
-                var document = docClassPair.Key;
                 var editor = await slnEditor.GetDocumentEditorAsync(document.Id);
                 var root = await document.GetSyntaxRootAsync();
 
-                foreach (var method in
-                         docClassPair.Value.SelectMany(pair => docTypeMethodHierarchy.TypeToMethods[pair]))
+                foreach (var method in pairs.SelectMany(pair => docTypeMethodHierarchy.TypeToMethods[pair]))
                 {
                     var asyncMethodNode = method.Node
                                                 .WithAsyncSignatureAndName(!method.Symbol.IsAbstract,
@@ -194,7 +192,7 @@ namespace CodeAnalysisApp.Helpers
                     return;
                 }
 
-                if (ModelExtensions.GetDeclaredSymbol(semanticModel!, typeSyntax) is not ITypeSymbol classSymbol)
+                if (semanticModel!.GetDeclaredSymbol(typeSyntax) is not ITypeSymbol classSymbol)
                 {
                     return;
                 }
@@ -278,10 +276,6 @@ namespace CodeAnalysisApp.Helpers
             var finder = new AsyncificationCandidateFinder(model, matcher);
             finder.CandidateFound += m =>
             {
-                /*
-                                if (model.GetDeclaredSymbol(m) is not IMethodSymbol methodSymbol)
-                                    return;*/
-
                 if (m.Parent is not ClassDeclarationSyntax @class)
                     return;
 

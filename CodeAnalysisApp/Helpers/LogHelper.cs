@@ -1,4 +1,5 @@
-﻿using CodeAnalysisApp.Utils;
+﻿using CodeAnalysisApp.Extensions;
+using CodeAnalysisApp.Utils;
 using Microsoft.CodeAnalysis;
 using Serilog;
 

@@ -38,6 +38,12 @@ namespace CodeAnalysisApp.Rewriters
             ExpressionSyntax nodeWithAwaitExpression;
             switch (node.Expression)
             {
+                case GenericNameSyntax genericName:
+                    nodeWithAwaitExpression = SyntaxNodesExtensions.ToAwaitExpression(
+                        visitedNode.WithExpression(genericName.WithIdentifier(SyntaxFactory.Identifier(matchingMethod.Name))),
+                        visitedNode);
+
+                    break;
                 case IdentifierNameSyntax:
                     nodeWithAwaitExpression = SyntaxNodesExtensions.ToAwaitExpression(
                         visitedNode.WithExpression(newName),

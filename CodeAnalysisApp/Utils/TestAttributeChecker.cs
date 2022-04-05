@@ -10,7 +10,11 @@ namespace CodeAnalysisApp.Utils
         private static readonly string[] testMethodAttributeTypeNames = {
             "NUnit.Framework.TestCaseAttribute",
             "NUnit.Framework.TestAttribute",
-            "NUnit.Framework.TestCaseSourceAttribute"
+            "NUnit.Framework.TestCaseSourceAttribute",
+            "Xunit.FactAttribute",
+            "Xunit.ClassDataAttribute",
+            "Xunit.TheoryAttribute",
+            "BenchmarkDotNet.Attributes.BenchmarkAttribute",
         };
         
         private static readonly ConditionalWeakTable<Compilation, TestAttributeChecker> instances = new();

@@ -6,12 +6,6 @@ namespace CodeAnalysisApp.Extensions
 {
     public static class EnumerableExtensions
     {
-        public static void ForEach<T>(this IEnumerable<T> source, Action<T> action)
-        {
-            foreach (var element in source)
-                action(element);
-        }
-
         public static bool SequencesEqual<T>(this IEnumerable<T> one, IEnumerable<T> other, Func<T, T, bool> comparer)
         {
             using var oneEnumerator = one.GetEnumerator();

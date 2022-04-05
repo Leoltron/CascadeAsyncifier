@@ -9,7 +9,7 @@ namespace CodeAnalysisApp
 {
     public class MutableSolutionTraverser
     {
-        private readonly DocumentFilter documentFilter = new DocumentFilter();
+        private readonly DocumentFilter documentFilter = new();
         private readonly Workspace workspace;
         private readonly HashSet<DocumentId> traversedDocs = new();
         private readonly int maxOneDocReloads;

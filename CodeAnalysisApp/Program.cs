@@ -41,7 +41,8 @@ namespace CodeAnalysisApp
 
             RegisterVSMSBuild();
 
-            using var workspace = MSBuildWorkspace.Create();
+            using var workspace =
+                MSBuildWorkspace.Create(/*new Dictionary<string, string> { {"TargetFramework", "netcoreapp3.1" } }*/);
 
             // Print message for WorkspaceFailed event to help diagnosing project load failures.
             workspace.WorkspaceFailed += (o, e) => Log.Warning(e.Diagnostic.Message);
@@ -50,6 +51,13 @@ namespace CodeAnalysisApp
 
             // Attach progress reporter so we print projects as they are loaded.
             var solution = await workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter());
+
+            if (solution.Projects.GroupBy(e => e.FilePath).Any(c => c.Count() > 1))
+            {
+                Log.Error("Loaded multiple projects from same file. This is probably due to targeting multiple frameworks");
+                return;
+            }
+            
             Log.Information("Finished loading solution '{SolutionPath}'", solutionPath);
 
             var time = await Rewrite(workspace);

@@ -1,45 +1,51 @@
 ﻿using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.MSBuild;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CascadeAsyncifier.Rewriters;
 using CascadeAsyncifier.Extensions;
+using CommandLine;
 using Serilog;
 
 namespace CascadeAsyncifier
 {
-    class Program
+    internal static class Program
     {
-        private static readonly IList<(Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)>
-            rewriterFactories =
-                new (Func<SemanticModel, CSharpSyntaxRewriter> factory, string name)[]
-                {
-                    //(m => new UseAsyncMethodRewriter(m), "Use async method"),
-                    (_ => new AsyncVoidRewriter(), "async void"),
-                    (m => new UnawaitedInAsyncMethodCallRewriter(m), "async call without \"await\""),
-                    (m => new BlockingAwaitingRewriter(m), "blocking awaiting"),
-                   // (m => new ConfigureAwaitRewriter(m), "ConfigureAwait()"),
-                   (m => new OnlyAwaitInReturnAsyncMethodRewriter(m), "Only one await in return"),
-                   (m => new OnlyAwaitInAsyncLambdaRewriter(m), "One statement in lambda"),
-                   (m => new AsyncMethodEndsWithAwaitExpressionRewriter(m), "Only one await at the end of method"),
-                };
+        private static Task Main(string[] args) =>
+            Parser.Default
+                  .ParseArguments<CommandLineOptions>(args)
+                  .WithParsedAsync(Main);
 
-        static async Task Main(string[] args)
+        private static async Task Main(CommandLineOptions options)
         {
-            var solutionPath = args[0];
-            
-            SetupLog(solutionPath);
+            SetupLog(options.SolutionPath);
 
-            RegisterVSMSBuild();
+            if (options.SolutionPath.IsNullOrEmpty())
+            {
+                var currentDirectory = Directory.GetCurrentDirectory();
+                Log.Information("No solution specified, searching current directory {Dir}", currentDirectory);
+                options.SolutionPath = Directory.GetFiles(currentDirectory, "*.sln", SearchOption.TopDirectoryOnly)
+                                                .FirstOrDefault();
+                if (options.SolutionPath.IsNullOrEmpty())
+                {
+                    Log.Error("No file found, aborting");
+                    return;
+                }
+            }
+
+            if (!TryRegisterMsBuild(options.MsBuildPath))
+                return;
+
+            var solutionPath = options.SolutionPath;
 
             using var workspace =
-                MSBuildWorkspace.Create(/*new Dictionary<string, string> { {"TargetFramework", "netcoreapp3.1" } }*/);
+                MSBuildWorkspace.Create(options.TargetFramework.IsNullOrEmpty()
+                                            ? ImmutableDictionary<string, string>.Empty
+                                            : ImmutableDictionary<string, string>.Empty.Add(
+                                                "TargetFramework", options.TargetFramework));
 
             // Print message for WorkspaceFailed event to help diagnosing project load failures.
             workspace.WorkspaceFailed += (o, e) => Log.Warning(e.Diagnostic.Message);
@@ -54,63 +60,48 @@ namespace CascadeAsyncifier
                 Log.Error("Loaded multiple projects from same file. This is probably due to targeting multiple frameworks");
                 return;
             }
-            
+
             Log.Information("Finished loading solution '{SolutionPath}'", solutionPath);
 
-            var time = await Rewrite(workspace);
-
-            Log.Information("Rewriters total time:");
-            for (var i = 0; i < rewriterFactories.Count; i++)
-            {
-                Log.Information("\t{Rewriter}:\t {Time}", rewriterFactories[i].name, time[i]);
-            }
+            await Rewrite(workspace, options);
         }
-
-
-        private static string CurrentTraverserName = "";
-        private static double CurrentTraverserProgress = 0;
-        private static bool CurrentTraverserIsFinished => CurrentTraverserProgress == 1;
-
-        private static async Task<TimeSpan[]> Rewrite(MSBuildWorkspace workspace)
+        private static async Task Rewrite(MSBuildWorkspace workspace, CommandLineOptions options)
         {
-            var time = new TimeSpan[rewriterFactories.Count];
+            var rewriters = RewritersInfo.GetRewriters(options).ToArray();
             
             var solutionTraverser = new MutableSolutionTraverser(workspace);
-            solutionTraverser.ReportProgress += (i, total) =>
-            {
-                if(CurrentTraverserIsFinished)
-                    return;
-                CurrentTraverserProgress = Math.Max((double)i/total, CurrentTraverserProgress);
-                Console.Write($"\r[{CurrentTraverserName}] {CurrentTraverserProgress:P} ");
-                if (CurrentTraverserIsFinished)
-                {
-                    Console.WriteLine("Done.");
-                }
-            };
 
-            CurrentTraverserName = "Initial async void";
+            Log.Information("Applying async void rewriter before asyncification");
             await solutionTraverser.ApplyRewriterAsync(_ => new AsyncVoidRewriter());
+            Log.Information("Done");
             
             await new Asyncifier.CascadeAsyncifier().Start(workspace);
             
-            for (var i = 0; i < rewriterFactories.Count; i++)
+            foreach (var factory in rewriters)
             {
-                var sw = Stopwatch.StartNew();
-                var (factory, name) = rewriterFactories[i];
-                CurrentTraverserName = name;
-                CurrentTraverserProgress = 0;
-                await solutionTraverser.ApplyRewriterAsync(factory);
-                time[i] += sw.Elapsed;
+                Log.Information("Applying rewriter {RewriterName}", factory.Name);
+                await solutionTraverser.ApplyRewriterAsync(factory.Build);
+                Log.Information("Rewriter {RewriterName} has finished", factory.Name);
             }
-
-            return time;
         }
 
-
-        private static void RegisterVSMSBuild()
+        private static bool TryRegisterMsBuild(string msBuildPath)
         {
-// Attempt to set the version of MSBuild.
+            if (!msBuildPath.IsNullOrEmpty())
+            {
+                MSBuildLocator.RegisterMSBuildPath(msBuildPath);
+                return true;
+            }
+            
+            // Attempt to set the version of MSBuild.
             var visualStudioInstances = MSBuildLocator.QueryVisualStudioInstances().ToArray();
+
+            if (visualStudioInstances.Length == 0)
+            {
+                Log.Error("Failed to automatically detect MSBuild instance. Please specify MSBuild folder through --msbuild-path parameter");
+                return false;
+            }
+            
             var instance = visualStudioInstances.Length == 1
                 // If there is only one instance of MSBuild on this machine, set that as the one to use.
                 ? visualStudioInstances[0]
@@ -123,12 +114,13 @@ namespace CascadeAsyncifier
             //       before calling MSBuildWorkspace.Create()
             //       otherwise, MSBuildWorkspace won't MEF compose.
             MSBuildLocator.RegisterInstance(instance);
+            return true;
         }
 
         private static VisualStudioInstance SelectVisualStudioInstance(VisualStudioInstance[] visualStudioInstances)
         {
             Console.WriteLine("Multiple installs of MSBuild detected please select one:");
-            for (int i = 0; i < visualStudioInstances.Length; i++)
+            for (var i = 0; i < visualStudioInstances.Length; i++)
             {
                 Console.WriteLine($"Instance {i + 1}");
                 Console.WriteLine($"    Name: {visualStudioInstances[i].Name}");
@@ -166,12 +158,12 @@ namespace CascadeAsyncifier
 
         private static void SetupLog(string solutionPath)
         {
-            var solutionFileName = Path.GetFileName(solutionPath);
+            var solutionFileNameSuffix = solutionPath.IsNullOrEmpty() ? "" : "_" + Path.GetFileName(solutionPath);
 
             var loggerConfiguration = new LoggerConfiguration().WriteTo.Console();
             if (!solutionPath.IsNullOrEmpty())
             {
-                loggerConfiguration.WriteTo.File($"{DateTime.Now:yyyy-MM-dd_HH-mm-ss_}{solutionFileName}.log");
+                loggerConfiguration.WriteTo.File($"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}{solutionFileNameSuffix}.log");
             }
             
             Log.Logger = loggerConfiguration.CreateLogger();

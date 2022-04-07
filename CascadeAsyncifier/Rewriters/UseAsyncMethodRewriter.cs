@@ -1,6 +1,8 @@
 using System;
+using CascadeAsyncifier.Asyncifier;
 using CascadeAsyncifier.Extensions;
 using CascadeAsyncifier.Helpers;
+using CascadeAsyncifier.Rewriters.Base;
 using CascadeAsyncifier.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;

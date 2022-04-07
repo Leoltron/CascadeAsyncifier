@@ -1,10 +1,10 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using CascadeAsyncifier.Helpers.SyncAsyncMethodPairProviders;
 using CascadeAsyncifier.Extensions;
+using CascadeAsyncifier.Helpers;
 using Microsoft.CodeAnalysis;
 
-namespace CascadeAsyncifier.Helpers
+namespace CascadeAsyncifier.Asyncifier
 {
     public class AsyncifiableMethodsProvider
     {

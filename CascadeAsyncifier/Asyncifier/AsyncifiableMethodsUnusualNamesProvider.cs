@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace CascadeAsyncifier.Helpers
+namespace CascadeAsyncifier.Asyncifier
 {
     public static class AsyncifiableMethodsUnusualNamesProvider
     {

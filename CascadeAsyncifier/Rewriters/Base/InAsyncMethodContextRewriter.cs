@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace CascadeAsyncifier.Rewriters
+namespace CascadeAsyncifier.Rewriters.Base
 {
     public abstract class InAsyncMethodContextRewriter : FunctionContextRewriter
     {

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CascadeAsyncifier.Asyncifier;
 using CascadeAsyncifier.Helpers;
 using CascadeAsyncifier.Rewriters;
 using CascadeAsyncifier.Extensions;
+using CascadeAsyncifier.Rewriters.Base;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;

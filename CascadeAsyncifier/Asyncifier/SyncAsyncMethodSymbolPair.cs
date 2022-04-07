@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace CascadeAsyncifier.Helpers.SyncAsyncMethodPairProviders
+namespace CascadeAsyncifier.Asyncifier
 {
     public class SyncAsyncMethodSymbolPair
     {

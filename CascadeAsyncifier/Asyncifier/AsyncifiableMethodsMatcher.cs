@@ -2,7 +2,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 
-namespace CascadeAsyncifier.Helpers
+namespace CascadeAsyncifier.Asyncifier
 {
     public class AsyncifiableMethodsMatcher
     {

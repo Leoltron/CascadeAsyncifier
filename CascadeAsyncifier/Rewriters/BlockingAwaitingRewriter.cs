@@ -1,4 +1,5 @@
 using CascadeAsyncifier.Extensions;
+using CascadeAsyncifier.Rewriters.Base;
 using CascadeAsyncifier.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;

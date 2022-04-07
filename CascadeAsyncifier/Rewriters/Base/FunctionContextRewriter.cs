@@ -1,14 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using CascadeAsyncifier.Extensions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Newtonsoft.Json;
 
-namespace CascadeAsyncifier.Rewriters
+namespace CascadeAsyncifier.Rewriters.Base
 {
     [SuppressMessage("ReSharper", "VirtualMemberNeverOverridden.Global")]
     public abstract class FunctionContextRewriter : CSharpSyntaxRewriter
@@ -182,11 +180,7 @@ namespace CascadeAsyncifier.Rewriters
                 CurrentContext = new Dictionary<string, object>();
                 BeforeVisit(parentContext, CurrentContext, node);
                 beforeVisit(parentContext, CurrentContext, node);
-                //var nodeFirstLine = node.ToString().Split(new[] { '\n' }, 2)[0];
-                //var messagePrefix = revisits > 0 ? $"[Revisit #{revisits}] " : string.Empty;
-                //Console.WriteLine($"{messagePrefix}Going into {nodeFirstLine}\n\t Context: {SerializeContext(CurrentContext)}\n\t ParentContext: {SerializeContext(parentContext)}");
                 var newNode = visit(node);
-                //Console.WriteLine($"{messagePrefix}Returned from {nodeFirstLine}\n\t Context: {SerializeContext(CurrentContext)}\n");
                 newNode = afterVisit(parentContext, CurrentContext, newNode);
                 var newSyntaxNode = AfterVisit(parentContext, CurrentContext, newNode);
 
@@ -201,12 +195,6 @@ namespace CascadeAsyncifier.Rewriters
                 if (revisits > MAX_REVISITS)
                     throw new Exception("Too many revisits in a row of the same node: " + MAX_REVISITS);
             }
-        }
-
-        private static string SerializeContext(IDictionary<string, object> context)
-        {
-            var excludedKeys = new[] { "ReturnType" };
-            return JsonConvert.SerializeObject(context.Where(p => !excludedKeys.Contains(p.Key)).ToDictionary(p => p));
         }
     }
 }

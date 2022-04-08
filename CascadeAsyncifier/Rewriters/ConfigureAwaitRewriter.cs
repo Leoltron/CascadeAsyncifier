@@ -35,8 +35,7 @@ namespace CascadeAsyncifier.Rewriters
             var expressionType = ModelExtensions.GetTypeInfo(model, node.Expression).Type;
 
 
-            if (awaitableSyntaxChecker.IsTask(expressionType) ||
-                awaitableSyntaxChecker.IsGenericTask(expressionType) )
+            if (awaitableSyntaxChecker.IsAnyTask(expressionType))
             {
                 if (expectedConfigureAwaitArgument != true)
                 {

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using CascadeAsyncifier.Asyncifier;
 using CascadeAsyncifier.Extensions;
 using CascadeAsyncifier.Helpers;
@@ -7,6 +9,7 @@ using CascadeAsyncifier.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
+using Serilog;
 
 namespace CascadeAsyncifier.Rewriters
 {
@@ -22,6 +25,17 @@ namespace CascadeAsyncifier.Rewriters
             matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
         }
 
+        private HashSet<string> usingDirectivesToAdd;
+
+        public override SyntaxNode? VisitCompilationUnit(CompilationUnitSyntax node)
+        {
+            usingDirectivesToAdd = new HashSet<string>();
+            var cu = (CompilationUnitSyntax)base.VisitCompilationUnit(node);
+            usingDirectivesToAdd.ExceptWith(cu!.Usings.Select(u => u.Name.ToString()));
+
+            return cu.WithUsingDirectives(usingDirectivesToAdd.ToArray());
+        }
+
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             var visitedNode = (InvocationExpressionSyntax)base.VisitInvocationExpression(node);
@@ -32,8 +46,16 @@ namespace CascadeAsyncifier.Rewriters
             if (ModelExtensions.GetSymbolInfo(model, node).Symbol is not IMethodSymbol symbol)
                 return visitedNode;
 
+
             if (!matcher.TryGetAsyncMethod(symbol, out var matchingMethod))
+            {
                 return visitedNode;
+            }
+
+            if (matchingMethod.IsExtensionMethod && !matchingMethod.ContainingNamespace.IsGlobalNamespace)
+            {
+                usingDirectivesToAdd.Add(matchingMethod.ContainingNamespace.GetFullName());
+            }
 
             var newName = SyntaxFactory.IdentifierName(matchingMethod.Name);
 
@@ -73,7 +95,7 @@ namespace CascadeAsyncifier.Rewriters
             if (visitedNode.Parent is not MemberAccessExpressionSyntax && visitedNode.Parent is not ConditionalAccessExpressionSyntax)
                 return nodeWithAwaitExpression;
 
-            return SyntaxFactory.ParenthesizedExpression(nodeWithAwaitExpression);
+            return SyntaxFactory.ParenthesizedExpression(nodeWithAwaitExpression.WithoutTrivia()).WithTriviaFrom(nodeWithAwaitExpression);
         }
 
         private static SimpleNameSyntax GenerateName(SimpleNameSyntax prevName, string newName) =>

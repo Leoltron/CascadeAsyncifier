@@ -30,7 +30,7 @@ namespace CascadeAsyncifier.Asyncifier
             var provider = new AsyncifiableMethodsProvider(compilation);
             foreach (var symbolPair in provider.Provide())
             {
-                asyncifiableMethodSymbols.Add(symbolPair.SyncMethod, symbolPair.AsyncMethod);
+                asyncifiableMethodSymbols.TryAdd(symbolPair.SyncMethod, symbolPair.AsyncMethod);
             }
         }
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Microsoft.CodeAnalysis;
 
 namespace CascadeAsyncifier.Extensions
@@ -8,19 +9,18 @@ namespace CascadeAsyncifier.Extensions
     {
         public static bool SymbolEquals(this ISymbol one, ISymbol other) => SymbolEqualityComparer.Default.Equals(one, other);
 
-        public static string GetFullName(this ISymbol symbol)
+        public static string GetFullName(this ISymbol symbol) => 
+            string.Join(".", symbol.GetFullNamePartsReversed().Reverse());
+
+        private static IEnumerable<string> GetFullNamePartsReversed(this ISymbol symbol)
         {
-            var nameParts = new List<string>();
             while (true)
             {
-                nameParts.Add(symbol.Name);
+                yield return symbol.Name;
                 if (symbol.ContainingNamespace.IsGlobalNamespace)
-                    break;
+                    yield break;
                 symbol = symbol.ContainingNamespace;
             }
-
-            nameParts.Reverse();
-            return string.Join(".", nameParts);
         }
 
         public static IMethodSymbol FindOverridenOrImplementedSymbol(this IMethodSymbol methodSymbol)

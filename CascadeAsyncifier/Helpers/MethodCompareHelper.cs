@@ -18,7 +18,7 @@ namespace CascadeAsyncifier.Helpers
             cancellationTokenSymbol = compilation.GetTypeByMetadataName(typeof(CancellationToken).FullName!);
         }
 
-        public bool IsAsyncVersionOf(IMethodSymbol method, IMethodSymbol asyncMethod, bool ignoreName = false)
+        public bool IsAsyncVersionOf(IMethodSymbol method, IMethodSymbol asyncMethod, bool ignoreName = false, bool treatExtensionMethodsAsReduced = true)
         {
             if (method.IsAsync)
                 throw new ArgumentException("Argument must be a sync method", nameof(method));
@@ -29,7 +29,7 @@ namespace CascadeAsyncifier.Helpers
             if (!IsReturnTypeAnAsyncVersionOf(method, asyncMethod))
                 return false;
 
-            if (!CompareArguments(method, asyncMethod))
+            if (!CompareArguments(method, asyncMethod, treatExtensionMethodsAsReduced))
                 return false;
 
             return true;
@@ -88,13 +88,21 @@ namespace CascadeAsyncifier.Helpers
             }
         }
 
-        private bool CompareArguments(IMethodSymbol one, IMethodSymbol other)
+        private bool CompareArguments(IMethodSymbol one, IMethodSymbol other, bool treatExtensionMethodsAsReduced)
         {
             if (one.IsGenericMethod != other.IsGenericMethod)
                 return false;
             
             var oneParameters = one.Parameters;
+            if (one.IsExtensionMethod && treatExtensionMethodsAsReduced)
+            {
+                oneParameters = oneParameters.RemoveAt(0);
+            }
             var otherParameters = other.Parameters;
+            if (other.IsExtensionMethod && treatExtensionMethodsAsReduced)
+            {
+                otherParameters = otherParameters.RemoveAt(0);
+            }
 
             if (oneParameters.Length != otherParameters.Length)
             {

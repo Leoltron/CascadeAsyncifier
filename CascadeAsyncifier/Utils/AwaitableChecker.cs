@@ -24,9 +24,9 @@ namespace CascadeAsyncifier.Utils
         public bool IsAwaitable(ITypeSymbol typeSymbol) =>
             typeSymbol.SymbolEquals(awaitableSymbol) ||
             typeSymbol.OriginalDefinition.SymbolEquals(genericAwaitableSymbol) ||
-            IsTask(typeSymbol) ||
-            IsGenericTask(typeSymbol);
+            IsAnyTask(typeSymbol);
 
+        public bool IsAnyTask(ITypeSymbol typeSymbol) => IsTask(typeSymbol) || IsGenericTask(typeSymbol);
         public bool IsTask(ITypeSymbol typeSymbol) => typeSymbol.SymbolEquals(taskSymbol);
         public bool IsGenericTask(ITypeSymbol typeSymbol) => typeSymbol.OriginalDefinition.SymbolEquals(genericTaskSymbol);
     }

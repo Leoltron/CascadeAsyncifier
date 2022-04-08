@@ -12,5 +12,7 @@ namespace CascadeAsyncifier.Extensions
 
             return compilationUnit.AddUsings(ExtendedSyntaxFactory.UsingDirective("System", "Threading", "Tasks"));
         }
+        public static CompilationUnitSyntax WithUsingDirectives(this CompilationUnitSyntax compilationUnit, params string[] usingFullNames) => 
+            compilationUnit.AddUsings(usingFullNames.Select(n => ExtendedSyntaxFactory.UsingDirective(n.Split('.'))).ToArray());
     }
 }

@@ -106,14 +106,14 @@ namespace CascadeAsyncifier.Helpers
 
             if (oneParameters.Length != otherParameters.Length)
             {
-                if (Math.Abs(oneParameters.Length - oneParameters.Length) > 1)
+                if (Math.Abs(oneParameters.Length - otherParameters.Length) > 1)
                     return false;
 
                 var extraParam = oneParameters.Length > otherParameters.Length
                     ? oneParameters.Last()
                     : otherParameters.Last();
 
-                if (extraParam.IsOptional && extraParam.Type.SymbolEquals(cancellationTokenSymbol))
+                if (extraParam.Type.SymbolEquals(cancellationTokenSymbol))
                 {
                     if (oneParameters.Length > otherParameters.Length)
                     {

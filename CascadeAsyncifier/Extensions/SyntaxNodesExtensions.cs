@@ -152,5 +152,14 @@ namespace CascadeAsyncifier.Extensions
 
             return false;
         }
+
+        public static InvocationExpressionSyntax AddCancellationTokenNoneArgument(this InvocationExpressionSyntax methodSymbol) =>
+            methodSymbol.WithArgumentList(
+                methodSymbol.ArgumentList.AddArguments(
+                    Argument(
+                        MemberAccessExpression(
+                            SyntaxKind.SimpleMemberAccessExpression,
+                            IdentifierName("CancellationToken"),
+                            IdentifierName("None")))));
     }
 }

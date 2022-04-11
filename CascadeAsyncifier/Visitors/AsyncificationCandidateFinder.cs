@@ -19,6 +19,7 @@ namespace CascadeAsyncifier.Visitors
 
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
+        private readonly ISpecialAsyncifiableMethodMatcher[] specialMatchers;
         private readonly HashSet<MethodDeclarationSyntax> ignoredMethods = new();
         private readonly HashSet<MethodDeclarationSyntax> unreportedInOutRefMethods = new();
 
@@ -28,6 +29,9 @@ namespace CascadeAsyncifier.Visitors
         {
             this.model = model;
             this.matcher = matcher;
+            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model) }
+                .Where(m => m.CanBeUsed)
+                .ToArray();
         }
 
         public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
@@ -47,7 +51,7 @@ namespace CascadeAsyncifier.Visitors
         {
             var methodSymbol = model.GetDeclaredSymbol(node);
 
-            if (matcher.CanBeAsyncified(methodSymbol)/* || testAttributeChecker.HasTestAttribute(methodSymbol)*/)
+            if (matcher.CanBeAsyncified(methodSymbol))
                 return false;
 
             if (node.ParameterList.Parameters.Any(
@@ -76,9 +80,11 @@ namespace CascadeAsyncifier.Visitors
             if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol methodSymbol)
             {
                 return;
-            }            
-            
-            var canBeAsyncified = new Lazy<bool>(() => matcher.CanBeAsyncified(methodSymbol));
+            }
+
+            var canBeAsyncified = new Lazy<bool>(
+                () => matcher.CanBeAsyncified(methodSymbol) ||
+                      specialMatchers.Any(m => m.TryGetAsyncMethod(node, out _)));
 
             if (unreportedInOutRefMethods.Contains(CurrentMethod) && canBeAsyncified.Value)
             {

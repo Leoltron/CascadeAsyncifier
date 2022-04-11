@@ -34,7 +34,7 @@ namespace CascadeAsyncifier.Rewriters
 
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            if (!InAsyncMethod || node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
+            if (!InAsyncMethod || node.IsInNoAwaitBlock() || node.Expression is not MemberAccessExpressionSyntax memberAccessNode)
                 return base.VisitInvocationExpression(node);
 
             var shouldBeParenthesized = node.Parent is

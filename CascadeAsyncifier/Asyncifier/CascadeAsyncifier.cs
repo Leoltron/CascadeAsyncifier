@@ -138,7 +138,9 @@ namespace CascadeAsyncifier.Asyncifier
                 var callers = await SymbolFinder.FindCallersAsync(methodSymbol, solution);
                 foreach (var caller in callers.Where(f => f.IsDirect))
                 {
-                    if (AsyncOverloadCanBeAppliedToCall(caller, methodSymbol))
+                    var document = solution.GetDocument(caller.Locations.Select(e => e.SourceTree).First(e => e != null));
+                    var matcher = document != null ? matchers.GetValueOrDefault(document.Project.Id) : null;
+                    if (AsyncOverloadCanBeAppliedToCall(caller, methodSymbol, matcher))
                         await AddMethod((IMethodSymbol) caller.CallingSymbol);
                 }
             }
@@ -152,6 +154,11 @@ namespace CascadeAsyncifier.Asyncifier
                 }
 
                 if (blacklistedMethods.ContainsKey(method))
+                {
+                    return;
+                }
+
+                if (method.DeclaringSyntaxReferences.IsEmpty)
                 {
                     return;
                 }
@@ -222,11 +229,18 @@ namespace CascadeAsyncifier.Asyncifier
             return new DocTypeMethodHierarchy(classToMethods, docsToTypes);
         }
 
-        private static bool AsyncOverloadCanBeAppliedToCall(SymbolCallerInfo caller, IMethodSymbol calledMethod)
+        private static bool AsyncOverloadCanBeAppliedToCall(
+            SymbolCallerInfo caller,
+            IMethodSymbol calledMethod,
+            AsyncifiableMethodsMatcher? matcher)
         {
-            return caller.CallingSymbol is IMethodSymbol callingSymbol &&
-                   caller.Locations.Any(location => AsyncOverloadCanBeAppliedToCallLocation(location, calledMethod.Name))
-                   && callingSymbol.WholeHierarchyChainIsInSourceCode();
+            if (caller.CallingSymbol is not IMethodSymbol callingSymbol)
+                return false;
+
+            if (!caller.Locations.Any(location => AsyncOverloadCanBeAppliedToCallLocation(location, calledMethod.Name)))
+                return false;
+
+            return callingSymbol.WholeHierarchyChainIsInSourceCode() || matcher != null && matcher.CanBeAsyncified(callingSymbol.FindOverridenOrImplementedSymbol());
         }
 
         private static bool AsyncOverloadCanBeAppliedToCallLocation(Location location, string calledMethodName)
@@ -284,7 +298,7 @@ namespace CascadeAsyncifier.Asyncifier
             };
             finder.CandidateBlacklisted += m =>
             {
-                blacklistedMethods.TryAdd((IMethodSymbol)ModelExtensions.GetDeclaredSymbol(model, m), true);
+                blacklistedMethods.TryAdd((IMethodSymbol)model.GetDeclaredSymbol(m), true);
                 if (m.Parent is not ClassDeclarationSyntax @class)
                     return;
 
@@ -298,10 +312,10 @@ namespace CascadeAsyncifier.Asyncifier
                   .Select(
                        p => (
                            new TypeSyntaxSemanticPair(
-                               p.Key, ModelExtensions.GetDeclaredSymbol(model, p.Key) as ITypeSymbol),
+                               p.Key, model.GetDeclaredSymbol(p.Key) as ITypeSymbol),
                            p.Value.Select(
                                  m => new MethodSyntaxSemanticPair(
-                                     m, ModelExtensions.GetDeclaredSymbol(model, m) as IMethodSymbol))
+                                     m, model.GetDeclaredSymbol(m) as IMethodSymbol))
                             .Where(mp => mp.Symbol != null)
                             .ToList()))
                   .Where(p => p.Item1.Symbol != null && p.Item2.Any())

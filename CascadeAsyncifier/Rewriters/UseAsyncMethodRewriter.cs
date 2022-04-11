@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using CascadeAsyncifier.Asyncifier;
 using CascadeAsyncifier.Extensions;
 using CascadeAsyncifier.Helpers;
@@ -9,7 +10,6 @@ using CascadeAsyncifier.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
-using Serilog;
 
 namespace CascadeAsyncifier.Rewriters
 {
@@ -17,12 +17,18 @@ namespace CascadeAsyncifier.Rewriters
     {
         private readonly SemanticModel model;
         private readonly AsyncifiableMethodsMatcher matcher;
+        private readonly ISpecialAsyncifiableMethodMatcher[] specialMatchers;
+        private readonly INamedTypeSymbol cancellationTokenSymbol;
 
         public UseAsyncMethodRewriter(SemanticModel model)
         {
             this.model = model;
             TestAttributeChecker.GetInstance(model.Compilation);
             matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
+            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model) }
+                .Where(m => m.CanBeUsed)
+                .ToArray();
+            cancellationTokenSymbol = model.Compilation.GetTypeByMetadataName(typeof(CancellationToken).FullName!);
         }
 
         private HashSet<string> usingDirectivesToAdd;
@@ -43,11 +49,12 @@ namespace CascadeAsyncifier.Rewriters
             if (!InAsyncMethod || visitedNode == null || node.IsInNoAwaitBlock())
                 return visitedNode;
 
-            if (ModelExtensions.GetSymbolInfo(model, node).Symbol is not IMethodSymbol symbol)
+            if (model.GetSymbolInfo(node).Symbol is not IMethodSymbol symbol)
                 return visitedNode;
 
 
-            if (!matcher.TryGetAsyncMethod(symbol, out var matchingMethod))
+            if (!matcher.TryGetAsyncMethod(symbol, out var matchingMethod) && 
+                !specialMatchers.Any(m => m.TryGetAsyncMethod(node, out matchingMethod)))
             {
                 return visitedNode;
             }
@@ -57,6 +64,14 @@ namespace CascadeAsyncifier.Rewriters
                 usingDirectivesToAdd.Add(matchingMethod.ContainingNamespace.GetFullName());
             }
 
+            if (matchingMethod.Parameters.Length > symbol.Parameters.Length &&
+                !matchingMethod.Parameters.Last().IsOptional &&
+                matchingMethod.Parameters.Last().Type.SymbolEquals(cancellationTokenSymbol))
+            {
+                visitedNode = visitedNode.AddCancellationTokenNoneArgument();
+                usingDirectivesToAdd.Add("System.Threading");
+            }
+            
             var newName = SyntaxFactory.IdentifierName(matchingMethod.Name);
 
             ExpressionSyntax nodeWithAwaitExpression;

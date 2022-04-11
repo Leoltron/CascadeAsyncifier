@@ -25,7 +25,7 @@ namespace CascadeAsyncifier.Rewriters
             this.model = model;
             TestAttributeChecker.GetInstance(model.Compilation);
             matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
-            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model) }
+            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model), new ToArrayMethodMatcher(model) }
                 .Where(m => m.CanBeUsed)
                 .ToArray();
             cancellationTokenSymbol = model.Compilation.GetTypeByMetadataName(typeof(CancellationToken).FullName!);

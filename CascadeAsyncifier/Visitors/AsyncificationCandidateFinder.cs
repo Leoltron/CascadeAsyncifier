@@ -29,7 +29,7 @@ namespace CascadeAsyncifier.Visitors
         {
             this.model = model;
             this.matcher = matcher;
-            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model) }
+            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model), new ToArrayMethodMatcher(model) }
                 .Where(m => m.CanBeUsed)
                 .ToArray();
         }

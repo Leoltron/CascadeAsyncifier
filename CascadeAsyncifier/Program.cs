@@ -75,7 +75,7 @@ namespace CascadeAsyncifier
             await solutionTraverser.ApplyRewriterAsync(_ => new AsyncVoidRewriter());
             Log.Information("Done");
             
-            await new Asyncifier.CascadeAsyncifier().Start(workspace);
+            await new Asyncifier.CascadeAsyncifier(options.StartingFilePathRegex).Start(workspace);
             
             foreach (var factory in rewriters)
             {

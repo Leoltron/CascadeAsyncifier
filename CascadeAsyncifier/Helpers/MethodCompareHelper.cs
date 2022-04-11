@@ -94,12 +94,12 @@ namespace CascadeAsyncifier.Helpers
                 return false;
             
             var oneParameters = one.Parameters;
-            if (one.IsExtensionMethod && treatExtensionMethodsAsReduced)
+            if (one.IsExtensionMethod && !other.IsExtensionMethod && treatExtensionMethodsAsReduced)
             {
                 oneParameters = oneParameters.RemoveAt(0);
             }
             var otherParameters = other.Parameters;
-            if (other.IsExtensionMethod && treatExtensionMethodsAsReduced)
+            if (other.IsExtensionMethod && !one.IsExtensionMethod && treatExtensionMethodsAsReduced)
             {
                 otherParameters = otherParameters.RemoveAt(0);
             }

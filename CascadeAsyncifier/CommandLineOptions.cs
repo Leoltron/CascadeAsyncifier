@@ -16,5 +16,10 @@ namespace CascadeAsyncifier
         [Option(longName: "omit-async-await", HelpText = "If async method's only await expression is its last statement (either as await task; or return await task;) " +
                                                          "then tool will remove \"async\" and \"await\" keywords, passing underlying Task expression as a return value.")]
         public bool OmitAsyncAwait { get; set; }
+        
+        [Option(longName: "starting-file-path-regex", HelpText = "By default, tool asyncifies every method that makes calls of methods with async overloads. " +
+                                                        "If this option is specified, it will only look at methods in files matching regular expression. "+
+                                                        "Any method that used previously asnycified methods will be asyncified regardless of its path.")]
+        public string StartingFilePathRegex { get; set; }
     }
 }

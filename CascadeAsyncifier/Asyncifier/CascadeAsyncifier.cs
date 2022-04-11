@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CascadeAsyncifier.Asyncifier.Deletion;
 using CascadeAsyncifier.Helpers;
@@ -24,6 +25,13 @@ namespace CascadeAsyncifier.Asyncifier
 
         private readonly ConcurrentDictionary<IMethodSymbol, bool> blacklistedMethods =
             new(SymbolEqualityComparer.Default);
+
+        private readonly Regex startingFilePathRegex;
+
+        public CascadeAsyncifier(string startingFilePathRegex)
+        {
+            this.startingFilePathRegex = startingFilePathRegex.IsNullOrEmpty() ? null :new Regex(startingFilePathRegex);
+        }
 
         public async Task Start(Workspace workspace)
         {
@@ -87,12 +95,15 @@ namespace CascadeAsyncifier.Asyncifier
             Solution solution, Dictionary<ProjectId, AsyncifiableMethodsMatcher> matchers)
         {
             var docTasks = solution.Projects
-                                   .SelectMany(p => p.Documents
-                                                     .Where(d => !documentFilter.IgnoreDocument(d))
-                                                     .Select(document => (
-                                                                 document,
-                                                                 task: TraverseDocument(document, matchers[p.Id]))))
-                                   .ToList();
+                .SelectMany(
+                    p => p.Documents
+                        .Where(d => startingFilePathRegex == null || d.FilePath != null && startingFilePathRegex.IsMatch(d.FilePath))
+                        .Where(d => !documentFilter.IgnoreDocument(d))
+                        .Select(
+                            document => (
+                                document,
+                                task: TraverseDocument(document, matchers[p.Id]))))
+                .ToList();
 
 
             Log.Information("Total documents: {TotalDocs}", docTasks.Count);

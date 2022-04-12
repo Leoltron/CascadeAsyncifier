@@ -33,7 +33,7 @@ namespace CascadeAsyncifier.Rewriters
 
         private HashSet<string> usingDirectivesToAdd;
 
-        public override SyntaxNode? VisitCompilationUnit(CompilationUnitSyntax node)
+        public override SyntaxNode VisitCompilationUnit(CompilationUnitSyntax node)
         {
             usingDirectivesToAdd = new HashSet<string>();
             var cu = (CompilationUnitSyntax)base.VisitCompilationUnit(node);

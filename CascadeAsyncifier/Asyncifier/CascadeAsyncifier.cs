@@ -243,7 +243,7 @@ namespace CascadeAsyncifier.Asyncifier
         private static bool AsyncOverloadCanBeAppliedToCall(
             SymbolCallerInfo caller,
             IMethodSymbol calledMethod,
-            AsyncifiableMethodsMatcher? matcher)
+            AsyncifiableMethodsMatcher matcher)
         {
             if (caller.CallingSymbol is not IMethodSymbol callingSymbol)
                 return false;

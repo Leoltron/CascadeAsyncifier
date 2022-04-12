@@ -17,9 +17,9 @@ namespace CascadeAsyncifier
         private static Task Main(string[] args) =>
             Parser.Default
                   .ParseArguments<CommandLineOptions>(args)
-                  .WithParsedAsync(Main);
+                  .WithParsedAsync(MainWithOptions);
 
-        private static async Task Main(CommandLineOptions options)
+        private static async Task MainWithOptions(CommandLineOptions options)
         {
             SetupLog(options.SolutionPath);
 

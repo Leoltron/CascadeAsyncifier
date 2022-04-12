@@ -36,7 +36,7 @@ namespace CascadeAsyncifier.Rewriters
 
         private HashSet<string> usingDirectivesToAdd;
 
-        public override SyntaxNode? VisitCompilationUnit(CompilationUnitSyntax node)
+        public override SyntaxNode VisitCompilationUnit(CompilationUnitSyntax node)
         {
             if (!AllSymbolsFound)
                 return node;

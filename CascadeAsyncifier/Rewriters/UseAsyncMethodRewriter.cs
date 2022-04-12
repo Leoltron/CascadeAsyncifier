@@ -93,7 +93,7 @@ namespace CascadeAsyncifier.Rewriters
                 {
                     var awaitExpression = SyntaxNodesExtensions.ToAwaitExpression(
                          expression.WithName(GenerateName(expression.Name, matchingMethod.Name)),
-                        visitedNode);
+                        expression);
                     nodeWithAwaitExpression = visitedNode.WithExpression(awaitExpression);
 
                     break;

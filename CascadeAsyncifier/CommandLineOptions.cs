@@ -8,7 +8,7 @@ namespace CascadeAsyncifier
         public string SolutionPath { get; set; }
         [Option(longName: "msbuild-path",  HelpText = "Path to the MSBuild folder. If not specified, will try to detect automatically.")]
         public string MsBuildPath { get; set; }
-        [Option(longName: "target-framework",  HelpText = "If solution projects target multiple frameworks, the tool needs to know which one to use. This option, if specified, will be passed as MSBuild argument.")]
+        [Option(longName: "target-framework",  HelpText = "If solution projects target multiple frameworks, the tool needs to know which one to use. This parameter, if specified, will be passed as MSBuild argument.")]
         public string TargetFramework { get; set; }
         
         [Option(longName: "configure-await-false", HelpText = "Will add .ConfigureAwait(false) to every await call (not only to generated methods)")]

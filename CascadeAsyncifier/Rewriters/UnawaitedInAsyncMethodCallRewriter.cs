@@ -1,3 +1,4 @@
+using CascadeAsyncifier.Extensions;
 using CascadeAsyncifier.Rewriters.Base;
 using CascadeAsyncifier.Utils;
 using Microsoft.CodeAnalysis;
@@ -18,7 +19,7 @@ namespace CascadeAsyncifier.Rewriters
 
         public override SyntaxNode VisitExpressionStatement(ExpressionStatementSyntax node)
         {
-            if (!InAsyncMethod)
+            if (!InAsyncMethod || node.IsInNoAwaitBlock() || node.Expression is AssignmentExpressionSyntax)
                 return base.VisitExpressionStatement(node);
 
             if (!awaitableSyntaxChecker.IsTypeAwaitable(node.Expression))

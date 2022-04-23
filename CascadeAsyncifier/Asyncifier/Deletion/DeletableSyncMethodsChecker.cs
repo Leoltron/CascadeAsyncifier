@@ -11,13 +11,14 @@ namespace CascadeAsyncifier.Asyncifier.Deletion
         /// <summary>
         /// If method's type extends one of listed classes, any sync method which has an async overload can be deleted
         /// </summary>
-        private static readonly string[] deletableContainingTypeNames = {
+        private static readonly string[] deletableContainingTypeNames =
+        {
             "System.Web.Mvc.Controller",
             "System.Web.Http.ApiController",
+            "Microsoft.AspNetCore.Mvc.ControllerBase",
         };
-        
-        private static readonly ConditionalWeakTable<Compilation, DeletableSyncMethodsChecker> instances = new();
 
+        private static readonly ConditionalWeakTable<Compilation, DeletableSyncMethodsChecker> instances = new();
 
         public static DeletableSyncMethodsChecker GetInstance(Compilation compilation)
         {
@@ -43,10 +44,11 @@ namespace CascadeAsyncifier.Asyncifier.Deletion
                 }
             }
         }
-        
+
         public bool CanDeleteSyncMethodWithAsyncOverload(IMethodSymbol syncMethodSymbol)
         {
-            return syncMethodSymbol.DeclaredAccessibility == Accessibility.Public && deletableContainingTypes.Any(t => syncMethodSymbol.ContainingType.InheritsFromOrEquals(t));
+            return syncMethodSymbol.DeclaredAccessibility == Accessibility.Public &&
+                   deletableContainingTypes.Any(t => syncMethodSymbol.ContainingType.InheritsFromOrEquals(t));
         }
     }
 }

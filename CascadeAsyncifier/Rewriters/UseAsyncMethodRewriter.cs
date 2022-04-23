@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using CascadeAsyncifier.Asyncifier;
+using CascadeAsyncifier.Asyncifier.Matchers;
 using CascadeAsyncifier.Extensions;
 using CascadeAsyncifier.Helpers;
 using CascadeAsyncifier.Rewriters.Base;
@@ -25,7 +25,7 @@ namespace CascadeAsyncifier.Rewriters
             this.model = model;
             TestAttributeChecker.GetInstance(model.Compilation);
             matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
-            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model), new ToArrayMethodMatcher(model) }
+            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new EntityFrameworkQueryableMethodMatcher(model) }
                 .Where(m => m.CanBeUsed)
                 .ToArray();
             cancellationTokenSymbol = model.Compilation.GetTypeByMetadataName(typeof(CancellationToken).FullName!);

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CascadeAsyncifier.Asyncifier.Deletion;
+using CascadeAsyncifier.Asyncifier.Matchers;
 using CascadeAsyncifier.Helpers;
 using CascadeAsyncifier.Rewriters;
 using CascadeAsyncifier.Utils;

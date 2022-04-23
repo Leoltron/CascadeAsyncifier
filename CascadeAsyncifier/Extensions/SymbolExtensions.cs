@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Microsoft.CodeAnalysis;
 
 namespace CascadeAsyncifier.Extensions
@@ -80,5 +79,7 @@ namespace CascadeAsyncifier.Extensions
             foreach (var nestedType in type.GetTypeMembers().SelectMany(GetNestedTypes))
                 yield return nestedType;
         }
+
+        public static IMethodSymbol ReducedFromOrItself(this IMethodSymbol methodSymbol) => methodSymbol.ReducedFrom ?? methodSymbol;
     }
 }

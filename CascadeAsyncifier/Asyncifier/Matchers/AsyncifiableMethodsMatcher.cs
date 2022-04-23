@@ -1,8 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CascadeAsyncifier.Extensions;
 using Microsoft.CodeAnalysis;
 
-namespace CascadeAsyncifier.Asyncifier
+namespace CascadeAsyncifier.Asyncifier.Matchers
 {
     public class AsyncifiableMethodsMatcher
     {
@@ -35,9 +36,9 @@ namespace CascadeAsyncifier.Asyncifier
         }
 
         public bool CanBeAsyncified(IMethodSymbol method) =>
-            asyncifiableMethodSymbols.ContainsKey(method.ReducedFrom ?? method.OriginalDefinition);
+            asyncifiableMethodSymbols.ContainsKey(method.OriginalDefinition.ReducedFromOrItself());
 
         public bool TryGetAsyncMethod(IMethodSymbol method, out IMethodSymbol methodSymbol) =>
-            asyncifiableMethodSymbols.TryGetValue(method.ReducedFrom ?? method.OriginalDefinition, out methodSymbol);
+            asyncifiableMethodSymbols.TryGetValue(method.OriginalDefinition.ReducedFromOrItself(), out methodSymbol);
     }
 }

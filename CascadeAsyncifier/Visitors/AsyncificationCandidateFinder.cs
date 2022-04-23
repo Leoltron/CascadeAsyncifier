@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using CascadeAsyncifier.Asyncifier;
+using CascadeAsyncifier.Asyncifier.Matchers;
 using CascadeAsyncifier.Helpers;
-using CascadeAsyncifier.Rewriters;
 using CascadeAsyncifier.Extensions;
 using CascadeAsyncifier.Rewriters.Base;
 using Microsoft.CodeAnalysis;
@@ -29,7 +28,7 @@ namespace CascadeAsyncifier.Visitors
         {
             this.model = model;
             this.matcher = matcher;
-            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new ToListMethodMatcher(model), new ToArrayMethodMatcher(model) }
+            specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new EntityFrameworkQueryableMethodMatcher(model) }
                 .Where(m => m.CanBeUsed)
                 .ToArray();
         }

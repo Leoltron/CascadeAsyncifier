@@ -61,11 +61,9 @@ namespace CascadeAsyncifier.Asyncifier.Deletion
                         ))
                     {
                         AddMethodToDelete(method.Symbol, method.Node, documentId);
-                        foreach (var usage in usages)
+                        foreach (var caller in usages.Select(u => (IMethodSymbol) u.CallingSymbol))
                         {
-                            var usageCallingSymbol = (IMethodSymbol)usage.CallingSymbol;
-                            await AddMethodToDeleteAsync(usageCallingSymbol,
-                                                         usageCallingSymbol.DeclaringSyntaxReferences.First());
+                            await AddMethodToDeleteAsync(caller, caller.DeclaringSyntaxReferences.First());
                         }
 
                         await TryAddMethodImplementationsToDeleteAsync(method.Symbol);
@@ -113,7 +111,8 @@ namespace CascadeAsyncifier.Asyncifier.Deletion
                         case MethodDeletionAction.Ignore:
                             break;
                         default:
-                            throw new ArgumentOutOfRangeException();
+                            throw new ArgumentOutOfRangeException(
+                                $"Unknown {nameof(MethodDeletionAction)} value: {result.Action}");
                     }
                 }
             }

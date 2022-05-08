@@ -73,6 +73,23 @@ namespace CascadeAsyncifier.Extensions
                 yield return type;
         }
 
+        public static IEnumerable<INamespaceSymbol> GetNamespaceMembersAndSelf(this INamespaceSymbol @namespace)
+        {
+            yield return @namespace;
+            foreach (var nestedNamespace in @namespace.GetNamespaceMembers())
+                yield return nestedNamespace;
+        }
+
+        public static IEnumerable<INamespaceSymbol> GetAllContainingNamespaces(this INamespaceSymbol @namespace)
+        {
+            var containingNamespace = @namespace.ContainingNamespace;
+            while (containingNamespace != null)
+            {
+                yield return containingNamespace;
+                containingNamespace = containingNamespace.ContainingNamespace;
+            }
+        }
+
         public static IEnumerable<INamedTypeSymbol> GetNestedTypes(this INamedTypeSymbol type)
         {
             yield return type;

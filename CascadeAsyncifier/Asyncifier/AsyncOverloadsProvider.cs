@@ -9,7 +9,7 @@ using Microsoft.CodeAnalysis;
 namespace CascadeAsyncifier.Asyncifier
 {
     [SuppressMessage("ReSharper", "ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator")]
-    public class AsyncifiableMethodsProvider
+    public class AsyncOverloadsProvider
     {
         private readonly Compilation compilation;
 
@@ -20,7 +20,7 @@ namespace CascadeAsyncifier.Asyncifier
 
         private readonly MethodCompareHelper methodCompareHelper;
 
-        public AsyncifiableMethodsProvider(Compilation compilation)
+        public AsyncOverloadsProvider(Compilation compilation)
         {
             this.compilation = compilation;
             methodCompareHelper = new MethodCompareHelper(compilation);

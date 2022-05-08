@@ -13,18 +13,18 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace CascadeAsyncifier.Rewriters
 {
-    public class UseAsyncMethodRewriter : InAsyncMethodContextRewriter
+    public class UseAsyncOverloadRewriter : InAsyncMethodContextRewriter
     {
         private readonly SemanticModel model;
-        private readonly AsyncifiableMethodsMatcher matcher;
+        private readonly AsyncOverloadMatcher matcher;
         private readonly ISpecialAsyncifiableMethodMatcher[] specialMatchers;
         private readonly INamedTypeSymbol cancellationTokenSymbol;
 
-        public UseAsyncMethodRewriter(SemanticModel model)
+        public UseAsyncOverloadRewriter(SemanticModel model)
         {
             this.model = model;
             TestAttributeChecker.GetInstance(model.Compilation);
-            matcher = AsyncifiableMethodsMatcher.GetInstance(model.Compilation);
+            matcher = AsyncOverloadMatcher.GetInstance(model.Compilation);
             specialMatchers = new ISpecialAsyncifiableMethodMatcher[] { new EntityFrameworkQueryableMethodMatcher(model) }
                 .Where(m => m.CanBeUsed)
                 .ToArray();

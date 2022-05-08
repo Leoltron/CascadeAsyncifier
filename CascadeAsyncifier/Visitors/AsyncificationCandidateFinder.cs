@@ -17,14 +17,14 @@ namespace CascadeAsyncifier.Visitors
         public event Action<MethodDeclarationSyntax> CandidateBlacklisted;
 
         private readonly SemanticModel model;
-        private readonly AsyncifiableMethodsMatcher matcher;
+        private readonly AsyncOverloadMatcher matcher;
         private readonly ISpecialAsyncifiableMethodMatcher[] specialMatchers;
         private readonly HashSet<MethodDeclarationSyntax> ignoredMethods = new();
         private readonly HashSet<MethodDeclarationSyntax> unreportedInOutRefMethods = new();
 
         public AsyncificationCandidateFinder(
             SemanticModel model,
-            AsyncifiableMethodsMatcher matcher)
+            AsyncOverloadMatcher matcher)
         {
             this.model = model;
             this.matcher = matcher;
@@ -50,7 +50,7 @@ namespace CascadeAsyncifier.Visitors
         {
             var methodSymbol = model.GetDeclaredSymbol(node);
 
-            if (matcher.CanBeAsyncified(methodSymbol))
+            if (matcher.HasAsyncOverload(methodSymbol))
                 return false;
 
             if (node.ParameterList.Parameters.Any(
@@ -61,6 +61,11 @@ namespace CascadeAsyncifier.Visitors
             {
                 unreportedInOutRefMethods.Add(node);
                 
+                return false;
+            }
+            
+            if (!methodSymbol.WholeHierarchyChainIsInSourceCode())
+            {
                 return false;
             }
 
@@ -81,8 +86,13 @@ namespace CascadeAsyncifier.Visitors
                 return;
             }
 
+            if (ignoredMethods.Contains(CurrentMethod) || node.IsInNoAwaitBlock())
+            {
+                return;
+            }
+
             var canBeAsyncified = new Lazy<bool>(
-                () => matcher.CanBeAsyncified(methodSymbol) ||
+                () => matcher.HasAsyncOverload(methodSymbol) ||
                       specialMatchers.Any(m => m.TryGetAsyncMethod(node, out _)));
 
             if (unreportedInOutRefMethods.Contains(CurrentMethod) && canBeAsyncified.Value)
@@ -92,17 +102,7 @@ namespace CascadeAsyncifier.Visitors
                 return;
             }
 
-            if (ignoredMethods.Contains(CurrentMethod) || node.IsInNoAwaitBlock())
-            {
-                return;
-            }
-
             if (!canBeAsyncified.Value)
-            {
-                return;
-            }
-
-            if (!model.GetDeclaredSymbol(CurrentMethod).WholeHierarchyChainIsInSourceCode())
             {
                 return;
             }

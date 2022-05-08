@@ -36,8 +36,6 @@ namespace CascadeAsyncifier.Asyncifier
 
         public async Task Start(Workspace workspace)
         {
-            var asyncifiedMethodsCleaner = new AsyncifiedMethodsCleaner(workspace);
-            
             var sw = Stopwatch.StartNew();
             Log.Information("Asyncifiaction started");
             Log.Information("Collecting initial methods with async overload... ");
@@ -48,63 +46,25 @@ namespace CascadeAsyncifier.Asyncifier
             var docTypeMethodHierarchy = await CollectAsyncifiableMethods(solution, matchers);
             await AddAsyncOverloads(workspace, docTypeMethodHierarchy);
             await ApplyUseAsyncMethodRewriter(workspace);
+            var asyncifiedMethodsCleaner = new AsyncifiedMethodsCleaner(workspace);
             await asyncifiedMethodsCleaner.DeleteUnusedAsyncifiedMethodsAsync(docTypeMethodHierarchy);
             sw.Stop();
             Log.Information("Asyncifiaction finished in {Time}", sw.Elapsed);
         }
 
-        private static async Task ApplyUseAsyncMethodRewriter(Workspace workspace)
-        {
-            Log.Information("Replacing methods' calls with async overloads");
-            var traverser = new MutableSolutionTraverser(workspace);
-            await traverser.ApplyRewriterAsync(m => new UseAsyncMethodRewriter(m));
-            Log.Information("Done");
-        }
-
-        private static async Task AddAsyncOverloads(Workspace workspace, DocTypeMethodHierarchy docTypeMethodHierarchy)
-        {
-            Log.Information("Duplicating and asyncifing signature of methods...");
-            var slnEditor = new SolutionEditor(workspace.CurrentSolution);
-            var totalMethods = docTypeMethodHierarchy.TypeToMethods.Sum(d => d.Value.Count);
-            var methodsIndex = 0;
-            foreach (var (document, pairs) in docTypeMethodHierarchy.DocsToTypes)
-            {
-                Console.Write($"\r{(double)methodsIndex / totalMethods:P} ");
-                methodsIndex++;
-                var editor = await slnEditor.GetDocumentEditorAsync(document.Id);
-                var root = await document.GetSyntaxRootAsync();
-
-                foreach (var method in pairs.SelectMany(pair => docTypeMethodHierarchy.TypeToMethods[pair]))
-                {
-                    var asyncMethodNode = method.Node
-                                                .WithAsyncSignatureAndName(!method.Symbol.IsAbstract,
-                                                                           method.Symbol.ContainingNamespace?.Name ==
-                                                                           "Task")
-                                                .WithoutRegionTrivia();
-                    editor.InsertAfter(method.Node, asyncMethodNode.LeadWithLineFeedIfNotPresent());
-                }
-
-                editor.ReplaceNode(root, (n, _) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
-            }
-
-            workspace.TryApplyChanges(slnEditor.GetChangedSolution());
-            Console.WriteLine($"\r{(1):P}");
-            Log.Information("Done");
-        }
-
         private async Task<DocTypeMethodHierarchy> CollectAsyncifiableMethods(
-            Solution solution, Dictionary<ProjectId, AsyncifiableMethodsMatcher> matchers)
+            Solution solution, Dictionary<ProjectId, AsyncOverloadMatcher> matchers)
         {
             var docTasks = solution.Projects
-                .SelectMany(
-                    p => p.Documents
-                        .Where(d => startingFilePathRegex == null || d.FilePath != null && startingFilePathRegex.IsMatch(d.FilePath))
-                        .Where(d => !documentFilter.IgnoreDocument(d))
-                        .Select(
-                            document => (
-                                document,
-                                task: TraverseDocument(document, matchers[p.Id]))))
-                .ToList();
+                                   .SelectMany(
+                                        p => p.Documents
+                                              .Where(d => startingFilePathRegex == null || d.FilePath != null && startingFilePathRegex.IsMatch(d.FilePath))
+                                              .Where(d => !documentFilter.IgnoreDocument(d))
+                                              .Select(
+                                                   document => (
+                                                       document,
+                                                       task: TraverseDocument(document, matchers[p.Id]))))
+                                   .ToList();
 
 
             Log.Information("Total documents: {TotalDocs}", docTasks.Count);
@@ -152,7 +112,7 @@ namespace CascadeAsyncifier.Asyncifier
                 {
                     var document = solution.GetDocument(caller.Locations.Select(e => e.SourceTree).First(e => e != null));
                     var matcher = document != null ? matchers.GetValueOrDefault(document.Project.Id) : null;
-                    if (AsyncOverloadCanBeAppliedToCall(caller, methodSymbol, matcher))
+                    if (AsyncOverloadCanBeAppliedToCall(caller, methodSymbol.Name, matcher))
                         await AddMethod((IMethodSymbol) caller.CallingSymbol);
                 }
             }
@@ -206,7 +166,7 @@ namespace CascadeAsyncifier.Asyncifier
                     }
                 }
 
-                if (matchers[document.Project.Id].CanBeAsyncified(method))
+                if (matchers[document.Project.Id].HasAsyncOverload(method))
                 {
                     return;
                 }
@@ -241,18 +201,61 @@ namespace CascadeAsyncifier.Asyncifier
             return new DocTypeMethodHierarchy(classToMethods, docsToTypes);
         }
 
+        private static async Task AddAsyncOverloads(Workspace workspace, DocTypeMethodHierarchy docTypeMethodHierarchy)
+        {
+            Log.Information("Duplicating and asyncifing signature of methods...");
+            var slnEditor = new SolutionEditor(workspace.CurrentSolution);
+            var totalMethods = docTypeMethodHierarchy.TypeToMethods.Sum(d => d.Value.Count);
+            var methodsIndex = 0;
+            foreach (var (document, pairs) in docTypeMethodHierarchy.DocsToTypes)
+            {
+                Console.Write($"\r{(double)methodsIndex / totalMethods:P} ");
+                methodsIndex++;
+                var editor = await slnEditor.GetDocumentEditorAsync(document.Id);
+                var root = await document.GetSyntaxRootAsync();
+
+                foreach (var method in pairs.SelectMany(pair => docTypeMethodHierarchy.TypeToMethods[pair]))
+                {
+                    var containingNamespace = method.Symbol.ContainingNamespace;
+                    var useTaskNamespace = containingNamespace != null && containingNamespace
+                                                                         .GetNamespaceMembersAndSelf()
+                                                                         .Concat(containingNamespace.GetAllContainingNamespaces())
+                                                                         .Any(ns => ns.Name == "Task");
+                    var asyncMethodNode = method.Node
+                                                .WithAsyncSignatureAndName(!method.Symbol.IsAbstract,
+                                                                           useTaskNamespace)
+                                                .WithoutRegionTrivia();
+                    editor.InsertAfter(method.Node, asyncMethodNode.LeadWithLineFeedIfNotPresent());
+                }
+
+                editor.ReplaceNode(root, (n, _) => n is CompilationUnitSyntax cu ? cu.WithTasksUsingDirective() : n);
+            }
+
+            workspace.TryApplyChanges(slnEditor.GetChangedSolution());
+            Console.WriteLine($"\r{(1):P}");
+            Log.Information("Done");
+        }
+
+        private static async Task ApplyUseAsyncMethodRewriter(Workspace workspace)
+        {
+            Log.Information("Replacing methods' calls with async overloads");
+            var traverser = new MutableSolutionTraverser(workspace);
+            await traverser.ApplyRewriterAsync(m => new UseAsyncOverloadRewriter(m));
+            Log.Information("Done");
+        }
+
         private static bool AsyncOverloadCanBeAppliedToCall(
             SymbolCallerInfo caller,
-            IMethodSymbol calledMethod,
-            AsyncifiableMethodsMatcher matcher)
+            string calledMethodName,
+            AsyncOverloadMatcher matcher)
         {
             if (caller.CallingSymbol is not IMethodSymbol callingSymbol)
                 return false;
 
-            if (!caller.Locations.Any(location => AsyncOverloadCanBeAppliedToCallLocation(location, calledMethod.Name)))
+            if (!caller.Locations.Any(location => AsyncOverloadCanBeAppliedToCallLocation(location, calledMethodName)))
                 return false;
 
-            return callingSymbol.WholeHierarchyChainIsInSourceCode() || matcher != null && matcher.CanBeAsyncified(callingSymbol.FindOverridenOrImplementedSymbol());
+            return callingSymbol.WholeHierarchyChainIsInSourceCode() || matcher != null && matcher.HasAsyncOverload(callingSymbol.FindOverridenOrImplementedSymbol());
         }
 
         private static bool AsyncOverloadCanBeAppliedToCallLocation(Location location, string calledMethodName)
@@ -273,21 +276,21 @@ namespace CascadeAsyncifier.Asyncifier
             return canBeAutoAsyncified;
         }
 
-        private static async Task<Dictionary<ProjectId, AsyncifiableMethodsMatcher>> InitAsyncMatchers(
+        private static async Task<Dictionary<ProjectId, AsyncOverloadMatcher>> InitAsyncMatchers(
             Solution solution)
         {
-            var matchers = new Dictionary<ProjectId, AsyncifiableMethodsMatcher>();
+            var matchers = new Dictionary<ProjectId, AsyncOverloadMatcher>();
             foreach (var project in solution.Projects)
             {
                 var compilation = await project.GetCompilationAsync();
-                matchers[project.Id] = AsyncifiableMethodsMatcher.GetInstance(compilation);
+                matchers[project.Id] = AsyncOverloadMatcher.GetInstance(compilation);
             }
 
             return matchers;
         }
 
         private async Task<Dictionary<TypeSyntaxSemanticPair, List<MethodSyntaxSemanticPair>>> TraverseDocument(
-            Document document, AsyncifiableMethodsMatcher matcher)
+            Document document, AsyncOverloadMatcher matcher)
         {
             var classToMethods = new Dictionary<ClassDeclarationSyntax, List<MethodDeclarationSyntax>>();
 

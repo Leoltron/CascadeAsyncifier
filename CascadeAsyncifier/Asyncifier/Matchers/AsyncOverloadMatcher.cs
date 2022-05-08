@@ -5,18 +5,18 @@ using Microsoft.CodeAnalysis;
 
 namespace CascadeAsyncifier.Asyncifier.Matchers
 {
-    public class AsyncifiableMethodsMatcher
+    public class AsyncOverloadMatcher
     {
-        private static readonly ConditionalWeakTable<Compilation, AsyncifiableMethodsMatcher> instances = new();
+        private static readonly ConditionalWeakTable<Compilation, AsyncOverloadMatcher> instances = new();
 
-        public static AsyncifiableMethodsMatcher GetInstance(Compilation compilation)
+        public static AsyncOverloadMatcher GetInstance(Compilation compilation)
         {
             lock (instances)
             {
                 if (instances.TryGetValue(compilation, out var instance))
                     return instance;
 
-                instance = new AsyncifiableMethodsMatcher(compilation);
+                instance = new AsyncOverloadMatcher(compilation);
                 instances.Add(compilation, instance);
 
                 return instance;
@@ -26,19 +26,19 @@ namespace CascadeAsyncifier.Asyncifier.Matchers
         private readonly Dictionary<IMethodSymbol, IMethodSymbol> asyncifiableMethodSymbols =
             new(SymbolEqualityComparer.Default);
 
-        private AsyncifiableMethodsMatcher(Compilation compilation)
+        private AsyncOverloadMatcher(Compilation compilation)
         {
-            var provider = new AsyncifiableMethodsProvider(compilation);
+            var provider = new AsyncOverloadsProvider(compilation);
             foreach (var symbolPair in provider.Provide())
             {
                 asyncifiableMethodSymbols.TryAdd(symbolPair.SyncMethod, symbolPair.AsyncMethod);
             }
         }
 
-        public bool CanBeAsyncified(IMethodSymbol method) =>
+        public bool HasAsyncOverload(IMethodSymbol method) =>
             asyncifiableMethodSymbols.ContainsKey(method.OriginalDefinition.ReducedFromOrItself());
 
-        public bool TryGetAsyncMethod(IMethodSymbol method, out IMethodSymbol methodSymbol) =>
-            asyncifiableMethodSymbols.TryGetValue(method.OriginalDefinition.ReducedFromOrItself(), out methodSymbol);
+        public bool TryGetAsyncMethod(IMethodSymbol method, out IMethodSymbol asyncMethod) =>
+            asyncifiableMethodSymbols.TryGetValue(method.OriginalDefinition.ReducedFromOrItself(), out asyncMethod);
     }
 }

@@ -11,14 +11,14 @@ namespace CascadeAsyncifier.Rewriters
     public class ConfigureAwaitRewriter : CSharpSyntaxRewriter
     {
         private readonly SemanticModel model;
-        private readonly INamedTypeSymbol attributeSymbol;
+        private readonly INamedTypeSymbol keepSyncContextAttrSymbol;
         private readonly AwaitableSyntaxChecker awaitableSyntaxChecker;
-        private const string ATTR_NAME = "TestConsoleApplication.KeepSyncContextAttribute";
+        private const string KeepSyncContextAttrName = "CascadeAsyncifier.KeepSyncContextAttribute";
 
         public ConfigureAwaitRewriter(SemanticModel model)
         {
             this.model = model;
-            attributeSymbol = model.Compilation.GetTypeByMetadataName(ATTR_NAME);
+            keepSyncContextAttrSymbol = model.Compilation.GetTypeByMetadataName(KeepSyncContextAttrName);
             awaitableSyntaxChecker = new AwaitableSyntaxChecker(model);
         }
 
@@ -68,30 +68,24 @@ namespace CascadeAsyncifier.Rewriters
                    maes.Name.Identifier.Text == "CompletedTask";
         }
 
-        private static ArgumentListSyntax ArgumentListWithOneBoolArgument(bool arg)
-        {
-            return ArgumentList()
-                .AddArguments(
+        private static ArgumentListSyntax ArgumentListWithOneBoolArgument(bool arg) =>
+            ArgumentList()
+               .AddArguments(
                     Argument(
                         LiteralExpression(arg ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression)));
-        }
 
 
-        public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
-        {
-            return VisitClassOrMethodExpression(node, () => base.VisitMethodDeclaration(node));
-        }
+        public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node) => 
+            VisitClassOrMethodExpression(node, () => base.VisitMethodDeclaration(node));
 
-        public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
-        {
-            return VisitClassOrMethodExpression(node, () => base.VisitClassDeclaration(node));
-        }
+        public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node) => 
+            VisitClassOrMethodExpression(node, () => base.VisitClassDeclaration(node));
 
         private SyntaxNode VisitClassOrMethodExpression(MemberDeclarationSyntax memberNode, Func<SyntaxNode> baseVisit)
         {
             var oldExpectedArg = expectedConfigureAwaitArgument;
 
-            if (memberNode.HasAttribute(model, attributeSymbol))
+            if (memberNode.HasAttribute(model, keepSyncContextAttrSymbol))
                 expectedConfigureAwaitArgument = true;
 
             var nodeToReturn = baseVisit();
@@ -99,16 +93,6 @@ namespace CascadeAsyncifier.Rewriters
             expectedConfigureAwaitArgument = oldExpectedArg;
 
             return nodeToReturn;
-        }
-
-        public override SyntaxNode VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
-        {
-            return node;
-        }
-
-        public override SyntaxNode VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
-        {
-            return node;
         }
 
         public override SyntaxNode VisitInvocationExpression(InvocationExpressionSyntax node)

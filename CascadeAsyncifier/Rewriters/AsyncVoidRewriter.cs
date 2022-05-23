@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 using CascadeAsyncifier.Extensions;
 using Microsoft.CodeAnalysis;
@@ -30,10 +31,11 @@ namespace CascadeAsyncifier.Rewriters
 
             addTaskUsingIfNeeded = true;
 
+            var taskReturnType =
+                IdentifierName(nameof(Task))
+                   .WithTriviaFrom(visitedNode.ReturnType);
             return visitedNode
-                .WithReturnType(
-                    IdentifierName(nameof(Task))
-                        .WithTriviaFrom(visitedNode.ReturnType));
+               .WithReturnType(taskReturnType);
         }
 
         private static bool ContainsAsyncVoid(MethodDeclarationSyntax node) =>

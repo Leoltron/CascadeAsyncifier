@@ -20,7 +20,7 @@ namespace CascadeAsyncifier.Rewriters
 
         public override SyntaxNode VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
         {
-            if (!InAsyncMethod)
+            if (!InAsyncMethod || node.IsInNoAwaitBlock())
                 return base.VisitMemberAccessExpression(node);
 
             var expType = ModelExtensions.GetTypeInfo(semanticModel, node.Expression);
